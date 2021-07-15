@@ -21,3 +21,6 @@ PLATFORMS = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+TYPE_SERIAL = "serial"
+TYPE_IMPLICIT = "implicit"

@@ -691,7 +691,7 @@ energyflip-client==0.2.2
 energyzero==2.1.1
 
 # homeassistant.components.enocean
-enocean==0.50
+enocean==0.60.2
 
 # homeassistant.components.environment_canada
 env-canada==0.7.2
