@@ -92,6 +92,20 @@ class BasePlatform(Entity):
         self._lazy_error_count = entry[CONF_LAZY_ERROR]
         self._lazy_errors = self._lazy_error_count
 
+        if (
+            self._slave
+            and self._input_type
+            and self._address is not None
+            and self._scan_interval == 0
+        ):
+            hub.register_update_listener(
+                self._slave, self._input_type, self._address, self.update
+            )
+
+    @abstractmethod
+    async def update(self, result, slaveId, input_type, address):
+        """Virtual function to be overwritten."""
+
     @abstractmethod
     async def async_update(self, now: datetime | None = None) -> None:
         """Virtual function to be overwritten."""
@@ -162,10 +176,17 @@ class BaseStructPlatform(BasePlatform, RestoreEntity):
             registers.reverse()
         return registers
 
-    def unpack_structure_result(self, registers: list[int]) -> str | None:
+    def update_value(self, new_value):
+        """Update value and write state if value changed."""
+        self._attr_available = True
+        if new_value != self._value:
+            self._value = new_value
+            self.async_write_ha_state()
+
+    def unpack_structure_result(self, registers: list[int], address: int) -> str | None:
         """Convert registers to proper result."""
 
-        registers = self._swap_registers(registers)
+        registers = self._swap_registers(registers[address : address + self._count])
         byte_string = b"".join([x.to_bytes(2, byteorder="big") for x in registers])
         if self._data_type == DataType.STRING:
             return byte_string.decode()
@@ -250,6 +271,9 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
             ][0]
             self._state_on = config[CONF_VERIFY].get(CONF_STATE_ON, self.command_on)
             self._state_off = config[CONF_VERIFY].get(CONF_STATE_OFF, self._command_off)
+            hub.register_update_listener(
+                self._slave, self._verify_type, self._verify_address, self.update
+            )
         else:
             self._verify_active = False
 
@@ -301,6 +325,15 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
             self._slave, self._verify_address, 1, self._verify_type
         )
         self._call_active = False
+        self.update(result, self._slave, self._verify_type, 0)
+
+    async def update(self, result, slaveId, input_type, address):
+        """Update the entity state."""
+        if not self._verify_active:
+            self._attr_available = True
+            self.async_write_ha_state()
+            return
+
         if result is None:
             if self._lazy_errors:
                 self._lazy_errors -= 1
@@ -313,9 +346,23 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
         self._lazy_errors = self._lazy_error_count
         self._attr_available = True
         if self._verify_type in (CALL_TYPE_COIL, CALL_TYPE_DISCRETE):
-            self._attr_is_on = bool(result.bits[0] & 1)
+            _LOGGER.debug(
+                "update switch slave=%s, input_type=%s, address=%s -> result=%s",
+                slaveId,
+                input_type,
+                address,
+                result.bits,
+            )
+            self._attr_is_on = bool(result.bits[address] & 1)
         else:
-            value = int(result.registers[0])
+            _LOGGER.debug(
+                "update switch slave=%s, input_type=%s, address=%s -> result=%s",
+                slaveId,
+                input_type,
+                address,
+                result.registers,
+            )
+            value = int(result.registers[address])
             if value == self._state_on:
                 self._attr_is_on = True
             elif value == self._state_off:
