@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from homeassistant.components.cover import CoverEntity, CoverEntityFeature
+from homeassistant.components.cover import ENTITY_ID_FORMAT, CoverEntity, CoverEntityFeature
 from homeassistant.const import (
     CONF_COVERS,
     CONF_NAME,
@@ -68,6 +68,7 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
     ) -> None:
         """Initialize the modbus cover."""
         super().__init__(hub, config)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
         self._state_closed = config[CONF_STATE_CLOSED]
         self._state_closing = config[CONF_STATE_CLOSING]
         self._state_open = config[CONF_STATE_OPEN]

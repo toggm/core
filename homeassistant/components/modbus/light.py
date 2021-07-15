@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.light import ColorMode, LightEntity
+from homeassistant.components.light import ENTITY_ID_FORMAT, ColorMode, LightEntity
 from homeassistant.const import CONF_LIGHTS, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -38,6 +38,14 @@ class ModbusLight(BaseSwitch, LightEntity):
 
     _attr_color_mode = ColorMode.ONOFF
     _attr_supported_color_modes = {ColorMode.ONOFF}
+    def __init__(
+        self,
+        hub: ModbusHub,
+        config: dict[str, Any],
+    ) -> None:
+        """Initialize the modbus light."""
+        super().__init__(hub, config)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Set light on."""
