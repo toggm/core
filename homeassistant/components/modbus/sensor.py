@@ -19,6 +19,16 @@ from homeassistant.const import (
     CONF_UNIT_OF_MEASUREMENT,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.components.sensor import ENTITY_ID_FORMAT, SensorEntity
+from homeassistant.const import (
+    CONF_COUNT,
+    CONF_NAME,
+    CONF_OFFSET,
+    CONF_SENSORS,
+    CONF_STRUCTURE,
+    CONF_UNIT_OF_MEASUREMENT,
+)
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -78,6 +88,11 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
         self._attr_native_unit_of_measurement = entry.get(CONF_UNIT_OF_MEASUREMENT)
         self._attr_state_class = entry.get(CONF_STATE_CLASS)
         self._attr_device_class = entry.get(CONF_DEVICE_CLASS)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
+        self._unit_of_measurement = entry.get(CONF_UNIT_OF_MEASUREMENT)
+        self._count = int(entry[CONF_COUNT])
+        self._offset = entry[CONF_OFFSET]
+        self._structure = entry.get(CONF_STRUCTURE)
 
     async def async_setup_slaves(
         self, hass: HomeAssistant, slave_count: int, entry: dict[str, Any]
