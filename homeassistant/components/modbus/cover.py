@@ -152,13 +152,30 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
         result = await self._hub.async_pymodbus_call(
             self._slave, self._address, 1, self._input_type
         )
+        self.update(result, self._slave, self._input_type, 0)
+
+    async def update(self, result, slaveId, input_type, address):
+        """Update the state of the cover."""
         if result is None:
             self._available = False
             self.async_write_ha_state()
             return None
         self._available = True
-        if self._input_type == CALL_TYPE_COIL:
-            self._value = bool(result.bits[0] & 1)
+        if input_type == CALL_TYPE_COIL:
+            _LOGGER.debug(
+                "update cover slave=%s, input_type=%s, address=%s -> result=%s",
+                slaveId,
+                input_type,
+                address,
+                result.bits,
+            )
+            self.update_value(bool(result.bits[address] & 1))
         else:
-            self._value = int(result.registers[0])
-        self.async_write_ha_state()
+            _LOGGER.debug(
+                "update cover slave=%s, input_type=%s, address=%s -> result=%s",
+                slaveId,
+                input_type,
+                address,
+                result.registers,
+            )
+            self.update_value(int(result.registers[address]))

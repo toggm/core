@@ -113,15 +113,28 @@ class ModbusRegisterSensor(BasePlatform, RestoreEntity, SensorEntity):
         result = await self._hub.async_pymodbus_call(
             self._slave, self._address, self._count, self._input_type
         )
+        self.update(result, self._slave, self._input_type, 0)
+
+    async def update(self, result, slaveId, input_type, address):
+        """Update the state of the sensor."""
         if result is None:
             self._available = False
             self.async_write_ha_state()
             return
 
-        registers = self._swap_registers(result.registers)
+        _LOGGER.debug(
+            "update sensors slave=%s, input_type=%s, address=%s -> result=%s",
+            slaveId,
+            input_type,
+            address,
+            result.registers,
+        )
+        registers = self._swap_registers(
+            result.registers[address : address + self._count]
+        )
         byte_string = b"".join([x.to_bytes(2, byteorder="big") for x in registers])
         if self._data_type == DATA_TYPE_STRING:
-            self._value = byte_string.decode()
+            self.update_value(byte_string.decode())
         else:
             val = struct.unpack(self._structure, byte_string)
 
@@ -150,9 +163,6 @@ class ModbusRegisterSensor(BasePlatform, RestoreEntity, SensorEntity):
                 # we lose some precision, and unit tests will fail. Therefore, we do
                 # the conversion only when it's absolutely necessary.
                 if isinstance(val, int) and self._precision == 0:
-                    self._value = str(val)
+                    self.update_value(str(val))
                 else:
-                    self._value = f"{float(val):.{self._precision}f}"
-
-        self._available = True
-        self.async_write_ha_state()
+                    self.update_value(f"{float(val):.{self._precision}f}")

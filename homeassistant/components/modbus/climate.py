@@ -90,6 +90,12 @@ class ModbusThermostat(BasePlatform, RestoreEntity, ClimateEntity):
         self._min_temp = config[CONF_MIN_TEMP]
         self._temp_step = config[CONF_STEP]
         self._swap = config[CONF_SWAP]
+        hub.register_update_listener(
+            self._slave,
+            CALL_TYPE_REGISTER_HOLDING,
+            self._target_temperature_register,
+            self.update,
+        )
 
     async def async_added_to_hass(self):
         """Handle entity which will be added."""
@@ -185,25 +191,62 @@ class ModbusThermostat(BasePlatform, RestoreEntity, ClimateEntity):
         """Update Target & Current Temperature."""
         # remark "now" is a dummy parameter to avoid problems with
         # async_track_time_interval
-        self._target_temperature = await self._async_read_register(
-            CALL_TYPE_REGISTER_HOLDING, self._target_temperature_register
-        )
-        self._current_temperature = await self._async_read_register(
-            self._input_type, self._address
-        )
-
-        self.async_write_ha_state()
-
-    async def _async_read_register(self, register_type, register) -> float | None:
-        """Read register using the Modbus hub slave."""
         result = await self._hub.async_pymodbus_call(
-            self._slave, register, self._count, register_type
+            self._slave,
+            self._target_temperature_register,
+            self._count,
+            CALL_TYPE_REGISTER_HOLDING,
         )
         if result is None:
             self._available = False
-            return -1
+            return
 
-        registers = self._swap_registers(result.registers)
+        new_target_temperature = await self._async_read_register(result, 0)
+        if new_target_temperature != self.target_temperature:
+            self._target_temperature = new_target_temperature
+            self.async_write_ha_state()
+
+        result = await self._hub.async_pymodbus_call(
+            self._slave, self._address, self._count, self._input_type
+        )
+        if result is None:
+            self._available = False
+            return
+
+        new_current_temperature = await self._async_read_register(result, 0)
+        if new_current_temperature != self._current_temperature:
+            self._current_temperature = new_current_temperature
+            self.async_write_ha_state()
+
+    async def update(self, result, slaveId, input_type, address):
+        """Update Target & Current Temperature."""
+        if result is None:
+            self._available = False
+            return
+        _LOGGER.debug(
+            "update climate slave=%s, input_type=%s, address=%s -> result=%s",
+            slaveId,
+            input_type,
+            address,
+            result.registers,
+        )
+        if input_type == CALL_TYPE_REGISTER_HOLDING:
+            new_value = await self._async_read_register(result, address)
+            if new_value != self._target_temperature:
+                self._target_temperature = new_value
+                self.async_write_ha_state()
+        else:
+            new_value = await self._async_read_register(result, address)
+            if new_value != self._current_temperature:
+                self._current_temperature = new_value
+                self.async_write_ha_state()
+        self._available = True
+
+    async def _async_read_register(self, result, address) -> float | None:
+        """Read register using the Modbus hub slave."""
+        registers = self._swap_registers(
+            result.registers[address : address + self._count]
+        )
         byte_string = b"".join([x.to_bytes(2, byteorder="big") for x in registers])
         val = struct.unpack(self._structure, byte_string)
         if len(val) != 1 or not isinstance(val[0], (float, int)):

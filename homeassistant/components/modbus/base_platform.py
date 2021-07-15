@@ -51,8 +51,20 @@ class BasePlatform(Entity):
         self._value = None
         self._available = True
         self._scan_interval = int(entry[CONF_SCAN_INTERVAL])
+        if (
+            self._slave
+            and self._input_type
+            and self._address is not None
+            and self._scan_interval == 0
+        ):
+            hub.register_update_listener(
+                self._slave, self._input_type, self._address, self.update
+            )
 
     @abstractmethod
+    async def update(self, result, slaveId, input_type, address):
+        """Virtual function to be overwritten."""
+
     async def async_update(self, now=None):
         """Virtual function to be overwritten."""
 
@@ -83,6 +95,13 @@ class BasePlatform(Entity):
         """Return True if entity is available."""
         return self._available
 
+    def update_value(self, new_value):
+        """Update value and write state if value changed."""
+        self._available = True
+        if new_value != self._value:
+            self._value = new_value
+            self.async_write_ha_state()
+
 
 class BaseSwitch(BasePlatform, RestoreEntity):
     """Base class representing a Modbus switch."""
@@ -111,6 +130,9 @@ class BaseSwitch(BasePlatform, RestoreEntity):
             )
             self._state_on = config[CONF_VERIFY].get(CONF_STATE_ON, self.command_on)
             self._state_off = config[CONF_VERIFY].get(CONF_STATE_OFF, self._command_off)
+            hub.register_update_listener(
+                self._slave, self._verify_type, self._verify_address, self.update
+            )
         else:
             self._verify_active = False
 
@@ -163,16 +185,39 @@ class BaseSwitch(BasePlatform, RestoreEntity):
         result = await self._hub.async_pymodbus_call(
             self._slave, self._verify_address, 1, self._verify_type
         )
+        self.update(result, self._slave, self._verify_type, 0)
+
+    async def update(self, result, slaveId, input_type, address):
+        """Update the entity state."""
+        if not self._verify_active:
+            self._available = True
+            self.async_write_ha_state()
+            return
+
         if result is None:
             self._available = False
             self.async_write_ha_state()
             return
 
         self._available = True
-        if self._verify_type == CALL_TYPE_COIL:
-            self._is_on = bool(result.bits[0] & 1)
-        else:
-            value = int(result.registers[0])
+        if result.bits:
+            _LOGGER.debug(
+                "update switch slave=%s, input_type=%s, address=%s -> result=%s",
+                slaveId,
+                input_type,
+                address,
+                result.bits,
+            )
+            self._is_on = bool(result.bits[address] & 1)
+        elif result.registers:
+            _LOGGER.debug(
+                "update switch slave=%s, input_type=%s, address=%s -> result=%s",
+                slaveId,
+                input_type,
+                address,
+                result.registers,
+            )
+            value = int(result.registers[address])
             if value == self._state_on:
                 self._is_on = True
             elif value == self._state_off:
