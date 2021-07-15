@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import logging
 from typing import Any
+from homeassistant.components.modbus.const import DATA_TYPE_STRING
 
 from homeassistant.components.sensor import (
     CONF_STATE_CLASS,
@@ -113,7 +114,11 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
         raw_result = await self._hub.async_pb_call(
             self._slave, self._address, self._count, self._input_type
         )
-        if raw_result is None:
+        self.update(raw_result, self._slave, self._input_type, 0)
+
+    async def update(self, result, slaveId, input_type, address):
+        """Update the state of the sensor."""
+        if result is None:
             if self._lazy_errors:
                 self._lazy_errors -= 1
                 self._cancel_call = async_call_later(
@@ -128,7 +133,7 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
             self.async_write_ha_state()
             return
 
-        result = self.unpack_structure_result(raw_result.registers)
+        result = self.unpack_structure_result(result.registers)
         if self._coordinator:
             if result:
                 result_array = list(
