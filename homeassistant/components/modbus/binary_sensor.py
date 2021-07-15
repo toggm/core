@@ -5,7 +5,7 @@ from datetime import datetime
 import logging
 from typing import Any
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import ENTITY_ID_FORMAT, BinarySensorEntity
 from homeassistant.const import (
     CONF_BINARY_SENSORS,
     CONF_DEVICE_CLASS,
@@ -62,6 +62,7 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
         self._coordinator: DataUpdateCoordinator[Any] | None = None
         self._result = None
         super().__init__(hub, entry)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
 
     async def async_setup_slaves(
         self, hass: HomeAssistant, slave_count: int, entry: dict[str, Any]
