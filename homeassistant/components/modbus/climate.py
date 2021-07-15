@@ -5,7 +5,7 @@ import logging
 import struct
 from typing import Any
 
-from homeassistant.components.climate import ClimateEntity
+from homeassistant.components.climate import ENTITY_ID_FORMAT, ClimateEntity
 from homeassistant.components.climate.const import (
     HVAC_MODE_AUTO,
     SUPPORT_TARGET_TEMPERATURE,
@@ -76,6 +76,7 @@ class ModbusThermostat(BasePlatform, RestoreEntity, ClimateEntity):
     ) -> None:
         """Initialize the modbus thermostat."""
         super().__init__(hub, config)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
         self._target_temperature_register = config[CONF_TARGET_TEMP]
         self._target_temperature = None
         self._current_temperature = None

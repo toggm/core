@@ -5,7 +5,7 @@ import logging
 import struct
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import ENTITY_ID_FORMAT, SensorEntity
 from homeassistant.const import (
     CONF_COUNT,
     CONF_NAME,
@@ -65,6 +65,7 @@ class ModbusRegisterSensor(BasePlatform, RestoreEntity, SensorEntity):
     ) -> None:
         """Initialize the modbus register sensor."""
         super().__init__(hub, entry)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
         self._unit_of_measurement = entry.get(CONF_UNIT_OF_MEASUREMENT)
         self._count = int(entry[CONF_COUNT])
         self._swap = entry[CONF_SWAP]

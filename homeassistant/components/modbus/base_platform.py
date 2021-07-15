@@ -12,6 +12,7 @@ from homeassistant.const import (
     CONF_COMMAND_ON,
     CONF_DELAY,
     CONF_DEVICE_CLASS,
+    CONF_ID,
     CONF_NAME,
     CONF_SCAN_INTERVAL,
     CONF_SLAVE,
@@ -44,6 +45,7 @@ class BasePlatform(Entity):
     def __init__(self, hub: ModbusHub, entry: dict[str, Any]) -> None:
         """Initialize the Modbus binary sensor."""
         self._hub = hub
+        self._id = entry[CONF_ID]
         self._name = entry[CONF_NAME]
         self._slave = entry.get(CONF_SLAVE)
         self._address = int(entry[CONF_ADDRESS])
@@ -53,6 +55,7 @@ class BasePlatform(Entity):
         self._available = True
         self._scan_interval = int(entry[CONF_SCAN_INTERVAL])
         self._scan_group = entry[CONF_SCAN_GROUP]
+        self._unique_id = f"modbus_{hub._config_name}_{self._slave}_{self._input_type}_{self._address}"
         if (
             self._slave
             and self._input_type
@@ -80,6 +83,11 @@ class BasePlatform(Entity):
             async_track_time_interval(
                 self.hass, self.async_update, timedelta(seconds=self._scan_interval)
             )
+
+    @property
+    def unique_id(self) -> str | None:
+        """Return a unique ID."""
+        return self._unique_id
 
     @property
     def name(self):

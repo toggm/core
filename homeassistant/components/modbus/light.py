@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from homeassistant.components.light import LightEntity
+from homeassistant.components.light import ENTITY_ID_FORMAT, LightEntity
 from homeassistant.const import CONF_LIGHTS, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
@@ -32,6 +33,15 @@ async def async_setup_platform(
 
 class ModbusLight(BaseSwitch, LightEntity):
     """Class representing a Modbus light."""
+
+    def __init__(
+        self,
+        hub: ModbusHub,
+        config: dict[str, Any],
+    ) -> None:
+        """Initialize the modbus light."""
+        super().__init__(hub, config)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
 
     async def async_turn_on(self, **kwargs):
         """Set light on."""
