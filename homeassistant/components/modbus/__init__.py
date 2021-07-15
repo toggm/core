@@ -30,6 +30,7 @@ from homeassistant.const import (
     CONF_DELAY,
     CONF_DEVICE_CLASS,
     CONF_HOST,
+    CONF_ID,
     CONF_LIGHTS,
     CONF_METHOD,
     CONF_NAME,
@@ -57,6 +58,7 @@ from .const import (  # noqa: F401
     CALL_TYPE_REGISTER_INPUT,
     CALL_TYPE_X_COILS,
     CALL_TYPE_X_REGISTER_HOLDINGS,
+    CONF_ADDRESS_CLOSE,
     CONF_BAUDRATE,
     CONF_BYTESIZE,
     CONF_CLIMATES,
@@ -75,6 +77,8 @@ from .const import (  # noqa: F401
     CONF_FAN_MODE_REGISTER,
     CONF_FAN_MODE_TOP,
     CONF_FAN_MODE_VALUES,
+    CONF_ENOCEAN,
+    CONF_ESP_VERSION,
     CONF_FANS,
     CONF_HVAC_MODE_AUTO,
     CONF_HVAC_MODE_COOL,
@@ -86,19 +90,25 @@ from .const import (  # noqa: F401
     CONF_HVAC_MODE_REGISTER,
     CONF_HVAC_MODE_VALUES,
     CONF_HVAC_ONOFF_REGISTER,
+    CONF_INPUT_ADDRESS,
     CONF_INPUT_TYPE,
     CONF_LAZY_ERROR,
+    CONF_MAX_SECONDS_TO_COMPLETE,
     CONF_MAX_TEMP,
     CONF_MAX_VALUE,
     CONF_MIN_TEMP,
     CONF_MIN_VALUE,
     CONF_MSG_WAIT,
     CONF_NAN_VALUE,
+    CONF_OUTPUT_ADDRESS,
     CONF_PARITY,
     CONF_PRECISION,
     CONF_RETRIES,
     CONF_RETRY_ON_EMPTY,
     CONF_SCALE,
+    CONF_SCAN_GROUP,
+    CONF_SCAN_GROUPS,
+    CONF_SCAN_INTERVAL_MILLIS,
     CONF_SLAVE_COUNT,
     CONF_STATE_CLOSED,
     CONF_STATE_CLOSING,
@@ -150,6 +160,7 @@ BASE_SCHEMA = vol.Schema({vol.Optional(CONF_NAME, default=DEFAULT_HUB): cv.strin
 
 BASE_COMPONENT_SCHEMA = vol.Schema(
     {
+        vol.Optional(CONF_ID, default=CONF_NAME): cv.string,
         vol.Required(CONF_NAME): cv.string,
         vol.Required(CONF_ADDRESS): cv.positive_int,
         vol.Exclusive(CONF_DEVICE_ADDRESS, "slave_addr"): cv.positive_int,
@@ -159,6 +170,7 @@ BASE_COMPONENT_SCHEMA = vol.Schema(
         ): cv.positive_int,
         vol.Optional(CONF_LAZY_ERROR): cv.positive_int,
         vol.Optional(CONF_UNIQUE_ID): cv.string,
+        vol.Optional(CONF_SCAN_GROUP): cv.string,
     }
 )
 
@@ -313,16 +325,24 @@ COVERS_SCHEMA = BASE_COMPONENT_SCHEMA.extend(
                 CALL_TYPE_COIL,
             ]
         ),
+        vol.Optional(CONF_ADDRESS_CLOSE): cv.positive_int,
         vol.Optional(CONF_DEVICE_CLASS): COVER_DEVICE_CLASSES_SCHEMA,
         vol.Optional(CONF_STATE_CLOSED, default=0): cv.positive_int,
         vol.Optional(CONF_STATE_CLOSING, default=3): cv.positive_int,
         vol.Optional(CONF_STATE_OPEN, default=1): cv.positive_int,
         vol.Optional(CONF_STATE_OPENING, default=2): cv.positive_int,
         vol.Optional(CONF_STATUS_REGISTER): cv.positive_int,
+        vol.Optional(CONF_MAX_SECONDS_TO_COMPLETE): cv.positive_int,
         vol.Optional(
             CONF_STATUS_REGISTER_TYPE,
             default=CALL_TYPE_REGISTER_HOLDING,
         ): vol.In([CALL_TYPE_REGISTER_HOLDING, CALL_TYPE_REGISTER_INPUT]),
+        vol.Optional(CONF_VERIFY): vol.Maybe(
+            {
+                vol.Optional(CONF_ADDRESS): cv.positive_int,
+                vol.Optional(CONF_ADDRESS_CLOSE): cv.positive_int,
+            }
+        ),
     }
 )
 
@@ -375,6 +395,9 @@ MODBUS_SCHEMA = vol.Schema(
         vol.Optional(CONF_CLOSE_COMM_ON_ERROR): cv.boolean,
         vol.Optional(CONF_DELAY, default=0): cv.positive_int,
         vol.Optional(CONF_RETRIES): cv.positive_int,
+        vol.Optional(
+            CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
+        ): cv.positive_int,
         vol.Optional(CONF_RETRY_ON_EMPTY): cv.boolean,
         vol.Optional(CONF_MSG_WAIT): cv.positive_int,
         vol.Optional(CONF_BINARY_SENSORS): vol.All(
@@ -390,6 +413,25 @@ MODBUS_SCHEMA = vol.Schema(
         ),
         vol.Optional(CONF_SWITCHES): vol.All(cv.ensure_list, [SWITCH_SCHEMA]),
         vol.Optional(CONF_FANS): vol.All(cv.ensure_list, [FAN_SCHEMA]),
+        vol.Optional(CONF_SCAN_GROUPS): vol.All(
+            cv.ensure_list,
+            [
+                vol.All(
+                    {
+                        vol.Required(CONF_NAME): cv.string,
+                        vol.Required(CONF_SCAN_INTERVAL_MILLIS): cv.positive_int,
+                    }
+                )
+            ],
+        ),
+        vol.Optional(CONF_ENOCEAN): vol.Maybe(
+            {
+                vol.Required(CONF_INPUT_ADDRESS): cv.positive_int,
+                vol.Required(CONF_OUTPUT_ADDRESS): cv.positive_int,
+                vol.Optional(CONF_SLAVE, 0): cv.positive_int,
+                vol.Optional(CONF_ESP_VERSION, 3): vol.In([2, 3]),
+            }
+        ),
     }
 )
 
