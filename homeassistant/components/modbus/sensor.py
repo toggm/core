@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from homeassistant.components.modbus.const import DATA_TYPE_STRING
 
 from homeassistant.components.sensor import CONF_STATE_CLASS, SensorEntity
 from homeassistant.const import CONF_NAME, CONF_SENSORS, CONF_UNIT_OF_MEASUREMENT
@@ -64,6 +65,10 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreEntity, SensorEntity):
         result = await self._hub.async_pymodbus_call(
             self._slave, self._address, self._count, self._input_type
         )
+        self.update(result, self._slave, self._input_type, 0)
+
+    async def update(self, result, slaveId, input_type, address):
+        """Update the state of the sensor."""
         if result is None:
             if self._lazy_errors:
                 self._lazy_errors -= 1
@@ -73,7 +78,15 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreEntity, SensorEntity):
             self.async_write_ha_state()
             return
 
-        self._attr_native_value = self.unpack_structure_result(result.registers)
+        _LOGGER.debug(
+            "update sensors slave=%s, input_type=%s, address=%s -> result=%s",
+            slaveId,
+            input_type,
+            address,
+            result.registers,
+        )
+        self._attr_native_value = self.unpack_structure_result(result.registers, address)
         self._lazy_errors = self._lazy_error_count
         self._attr_available = True
         self.async_write_ha_state()
+        
