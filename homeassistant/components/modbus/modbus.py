@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from collections import namedtuple
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
@@ -18,6 +19,11 @@ from pymodbus.pdu import ModbusResponse
 from pymodbus.transaction import ModbusAsciiFramer, ModbusRtuFramer, ModbusSocketFramer
 import voluptuous as vol
 
+from homeassistant.components.enocean import (
+    DATA_ENOCEAN,
+    DOMAIN as ENOCEAN_DOMAIN,
+    ENOCEAN_DONGLE,
+)
 from homeassistant.const import (
     ATTR_STATE,
     CONF_DELAY,
@@ -25,6 +31,8 @@ from homeassistant.const import (
     CONF_METHOD,
     CONF_NAME,
     CONF_PORT,
+    CONF_SCAN_INTERVAL,
+    CONF_SLAVE,
     CONF_TIMEOUT,
     CONF_TYPE,
     EVENT_HOMEASSISTANT_STOP,
@@ -33,7 +41,7 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.helpers.reload import async_setup_reload_service
 from homeassistant.helpers.typing import ConfigType
@@ -54,8 +62,14 @@ from .const import (
     CALL_TYPE_WRITE_REGISTERS,
     CONF_BAUDRATE,
     CONF_BYTESIZE,
+    CONF_ENOCEAN,
+    CONF_ESP_VERSION,
+    CONF_INPUT_ADDRESS,
     CONF_MSG_WAIT,
+    CONF_OUTPUT_ADDRESS,
     CONF_PARITY,
+    CONF_SCAN_GROUPS,
+    CONF_SCAN_INTERVAL_MILLIS,
     CONF_STOPBITS,
     DEFAULT_HUB,
     MODBUS_DOMAIN as DOMAIN,
@@ -151,6 +165,12 @@ async def async_modbus_setup(
         # to avoid a racing problem
         if not await my_hub.async_setup():
             return False
+
+        # Register modbus enocean dongle
+        if conf_hub.get(CONF_ENOCEAN):
+            await my_hub.async_create_and_register_enocean_dongle(
+                conf_hub[CONF_ENOCEAN]
+            )
 
         # load platforms
         for component, conf_key in PLATFORMS:
@@ -264,6 +284,43 @@ async def async_modbus_setup(
     return True
 
 
+class ModbusUpdateListener:
+    """Update listener configuration."""
+
+    def __init__(
+        self,
+        slave: int,
+        input_type: str,
+        min_address: int,
+        max_address: int,
+        func: Callable[
+            [ModbusResponse | None, int, str, int], Coroutine[Any, Any, None]
+        ],
+    ) -> None:
+        """Initialize the Modbus update listener configuration."""
+        self._slave = slave
+        self._input_type = input_type
+        self._min_address = min_address
+        self._max_address = max_address
+        self._func = func
+
+    def get_min_address(self) -> int:
+        """Get min address."""
+        return self._min_address
+
+    def get_max_address(self) -> int:
+        """Get max address."""
+        return self._max_address
+
+    def notify(
+        self, result: ModbusResponse | None, offset: int
+    ) -> Coroutine[Any, Any, None]:
+        """Notify update listener."""
+        return self._func(
+            result, self._slave, self._input_type, self._min_address - offset
+        )
+
+
 class ModbusHub:
     """Thread safe wrapper class for pymodbus."""
 
@@ -282,6 +339,7 @@ class ModbusHub:
         self._config_type = client_config[CONF_TYPE]
         self._config_delay = client_config[CONF_DELAY]
         self._pb_request: dict[str, RunEntry] = {}
+        self._scan_interval = int(client_config[CONF_SCAN_INTERVAL])
         self._pb_class = {
             SERIAL: AsyncModbusSerialClient,
             TCP: AsyncModbusTcpClient,
@@ -315,6 +373,14 @@ class ModbusHub:
                 self._pb_params["framer"] = ModbusRtuFramer
             else:
                 self._pb_params["framer"] = ModbusSocketFramer
+        self._update_listeners_by_scan_group = dict[
+            str, dict[Any, list[ModbusUpdateListener]]
+        ]()
+        self._scan_groups = dict[str, int]()
+        for entry in client_config[CONF_SCAN_GROUPS]:
+            name = entry[CONF_NAME]
+            self._scan_groups[name] = int(entry[CONF_SCAN_INTERVAL_MILLIS])
+            self._update_listeners_by_scan_group[name] = {}
 
         if CONF_MSG_WAIT in client_config:
             self._msg_wait = client_config[CONF_MSG_WAIT] / 1000
@@ -364,13 +430,123 @@ class ModbusHub:
             self._async_cancel_listener = async_call_later(
                 self.hass, self._config_delay, self.async_end_delay
             )
+        else:
+            self.start_update_listener()
+
         return True
+
+    async def async_create_and_register_enocean_dongle(
+        self, config: dict[str, Any]
+    ) -> None:
+        """Create and register enocean dongle."""
+        # pylint: disable=import-outside-toplevel
+        from .modbusenoceandongle import ModbusEnOceanDongle
+        from .modbusenoceanwago750adapter import ModbusEnOceanWago750Adapter
+
+        # pylint: enable=import-outside-toplevel
+
+        input_address = config[CONF_INPUT_ADDRESS]
+        output_address = config[CONF_OUTPUT_ADDRESS]
+        slave = config[CONF_SLAVE]
+        esp_version = config.get(CONF_ESP_VERSION, 3)
+        # Change as soon as other modbus enocean adapters are supported
+        adapter = ModbusEnOceanWago750Adapter(
+            self, slave, input_address, output_address
+        )
+        dongle = ModbusEnOceanDongle(self.hass, adapter, esp_version)
+        # Register dongle if not another enocean dongle was registered yet
+        if self.hass.config_entries.async_entries(ENOCEAN_DOMAIN):
+            _LOGGER.debug("Register modbus enocean dongle")
+            enocean_data = self.hass.data.setdefault(DATA_ENOCEAN, {})
+            await dongle.async_setup()
+            enocean_data[ENOCEAN_DONGLE] = dongle
 
     @callback
     def async_end_delay(self, args: Any) -> None:
         """End startup delay."""
         self._async_cancel_listener = None
         self._config_delay = 0
+        self.start_update_listener()
+
+    def start_update_listener(self) -> None:
+        """Possibly start monitoring of updates."""
+        for scan_group, interval_millis in self._scan_groups.items():
+            _LOGGER.debug(
+                "Register scan listener scan_group=%s, interval_millis=%s",
+                scan_group,
+                interval_millis,
+            )
+            async_track_time_interval(
+                self.hass,
+                self.async_update_function(scan_group),
+                timedelta(milliseconds=interval_millis),
+            )
+
+    def register_update_listener(
+        self,
+        scan_group: str,
+        slave: int,
+        input_type: str,
+        min_address: int,
+        max_address: int,
+        func: Callable[
+            [ModbusResponse | None, int, str, int], Coroutine[Any, Any, None]
+        ],
+    ) -> None:
+        """Register update listener."""
+        _LOGGER.debug(
+            "Register update listener slave=%s, input_type=%s, min_address=%s, max_address=%s in scan_group=%s",
+            slave,
+            input_type,
+            min_address,
+            max_address,
+            scan_group,
+        )
+        update_listeners = self._update_listeners_by_scan_group[scan_group]
+        key = (slave, input_type)
+        if key in update_listeners:
+            update_listeners[key].append(
+                ModbusUpdateListener(slave, input_type, min_address, max_address, func)
+            )
+        else:
+            update_listeners[key] = [
+                ModbusUpdateListener(slave, input_type, min_address, max_address, func)
+            ]
+
+    def async_update_function(
+        self, scan_group: str
+    ) -> Callable[[datetime], Coroutine[Any, Any, None] | None]:
+        """Return async update function per scan group."""
+
+        @callback
+        async def async_update(now: datetime | None = None) -> None:
+            """Update the state of all entities in a given scan group."""
+            # remark "now" is a dummy parameter to avoid problems with
+            # async_track_time_interval
+            for (
+                (slave, input_type),
+                listeners,
+            ) in self._update_listeners_by_scan_group[scan_group].items():
+                min_address = 1000
+                max_address = 0
+                for listener in listeners:
+                    min_address = min(min_address, listener.get_min_address())
+                    max_address = max(max_address, listener.get_max_address())
+                _LOGGER.debug(
+                    "query modbus: scan_group=%s, slave=%s, minAdress=%s, maxAdress=%s, input_type=%s",
+                    scan_group,
+                    slave,
+                    min_address,
+                    max_address,
+                    input_type,
+                )
+                result = await self.async_pb_call(
+                    slave, min_address, max_address + 1 - min_address, input_type
+                )
+                for listener in listeners:
+                    await listener.notify(result, min_address)
+
+        return async_update
 
     async def async_restart(self) -> None:
         """Reconnect client."""

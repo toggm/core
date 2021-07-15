@@ -6,15 +6,21 @@ from datetime import datetime
 import logging
 from typing import Any
 
+from pymodbus.pdu import ModbusResponse
+
 from homeassistant.components.sensor import (
     CONF_STATE_CLASS,
+    ENTITY_ID_FORMAT,
     RestoreSensor,
     SensorEntity,
 )
 from homeassistant.const import (
+    CONF_COUNT,
     CONF_DEVICE_CLASS,
     CONF_NAME,
+    CONF_OFFSET,
     CONF_SENSORS,
+    CONF_STRUCTURE,
     CONF_UNIQUE_ID,
     CONF_UNIT_OF_MEASUREMENT,
 )
@@ -78,6 +84,11 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
         self._attr_native_unit_of_measurement = entry.get(CONF_UNIT_OF_MEASUREMENT)
         self._attr_state_class = entry.get(CONF_STATE_CLASS)
         self._attr_device_class = entry.get(CONF_DEVICE_CLASS)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
+        self._unit_of_measurement = entry.get(CONF_UNIT_OF_MEASUREMENT)
+        self._count = int(entry[CONF_COUNT])
+        self._offset = entry[CONF_OFFSET]
+        self._structure = entry[CONF_STRUCTURE]
 
     async def async_setup_slaves(
         self, hass: HomeAssistant, slave_count: int, entry: dict[str, Any]
@@ -110,9 +121,25 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
         # remark "now" is a dummy parameter to avoid problems with
         # async_track_time_interval
         self._cancel_call = None
+        if self._call_active:
+            return
+        self._call_active = True
         raw_result = await self._hub.async_pb_call(
             self._slave, self._address, self._count, self._input_type
         )
+        self._call_active = False
+        await self.async_update_from_result(
+            raw_result, self._slave, self._input_type, 0
+        )
+
+    async def async_update_from_result(
+        self,
+        raw_result: ModbusResponse | None,
+        slave_id: int,
+        input_type: str,
+        address: int,
+    ) -> None:
+        """Update the state of the sensor."""
         if raw_result is None:
             self._attr_available = False
             self._attr_native_value = None
@@ -121,7 +148,7 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
             self.async_write_ha_state()
             return
 
-        result = self.unpack_structure_result(raw_result.registers)
+        result = self.unpack_structure_result(raw_result.registers, address)
         if self._coordinator:
             if result:
                 result_array = list(

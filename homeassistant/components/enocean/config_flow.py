@@ -5,10 +5,10 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.const import CONF_DEVICE
+from homeassistant.const import CONF_DEVICE, CONF_TYPE
 
 from . import dongle
-from .const import DOMAIN, ERROR_INVALID_DONGLE_PATH, LOGGER
+from .const import DOMAIN, ERROR_INVALID_DONGLE_PATH, LOGGER, TYPE_IMPLICIT, TYPE_SERIAL
 
 
 class EnOceanFlowHandler(ConfigFlow, domain=DOMAIN):
@@ -88,8 +88,14 @@ class EnOceanFlowHandler(ConfigFlow, domain=DOMAIN):
 
     async def validate_enocean_conf(self, user_input) -> bool:
         """Return True if the user_input contains a valid dongle path."""
-        dongle_path = user_input[CONF_DEVICE]
-        return await self.hass.async_add_executor_job(dongle.validate_path, dongle_path)
+        if user_input[CONF_TYPE] == TYPE_SERIAL:
+            dongle_path = user_input[CONF_DEVICE]
+            return await self.hass.async_add_executor_job(dongle.validate_path, dongle_path)
+        elif user_input[CONF_TYPE] == TYPE_IMPLICIT:
+            # assume configuration is correct for implicit enocean dongles
+            return True
+        else:
+            return False
 
     def create_enocean_entry(self, user_input):
         """Create an entry for the provided configuration."""

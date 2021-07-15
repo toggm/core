@@ -7,6 +7,8 @@ import logging
 import struct
 from typing import Any, cast
 
+from pymodbus.pdu import ModbusResponse
+
 from homeassistant.components.climate import (
     FAN_AUTO,
     FAN_DIFFUSE,
@@ -23,6 +25,7 @@ from homeassistant.components.climate import (
     SWING_OFF,
     SWING_ON,
     SWING_VERTICAL,
+    ENTITY_ID_FORMAT,
     ClimateEntity,
     ClimateEntityFeature,
     HVACMode,
@@ -102,7 +105,7 @@ HVACMODE_TO_TARG_TEMP_REG_INDEX_ARRAY = {
     HVACMode.OFF: 6,
     None: 0,
 }
-
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_platform(
     hass: HomeAssistant,
@@ -140,11 +143,22 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
     ) -> None:
         """Initialize the modbus thermostat."""
         super().__init__(hass, hub, config)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
         self._target_temperature_register = config[CONF_TARGET_TEMP]
         self._target_temperature_write_registers = config[
             CONF_TARGET_TEMP_WRITE_REGISTERS
         ]
         self._unit = config[CONF_TEMPERATURE_UNIT]
+        if self._scan_group is not None:
+            hub.register_update_listener(
+                self._scan_group,
+                self._slave,
+                CALL_TYPE_REGISTER_HOLDING,
+                self._target_temperature_register,
+                self._target_temperature_register,
+                self.async_update_from_result,
+            )
+
         self._attr_current_temperature = None
         self._attr_target_temperature = None
         self._attr_temperature_unit = (
@@ -370,6 +384,9 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
             for i in range(0, len(as_bytes), 2)
         ]
         registers = self._swap_registers(raw_regs, 0)
+        if self._call_active:
+            return
+        self._call_active = True
 
         if self._data_type in (
             DataType.INT16,
@@ -402,6 +419,7 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
                 [int(float(i)) for i in registers],
                 CALL_TYPE_WRITE_REGISTERS,
             )
+        self._call_active = False
         self._attr_available = result is not None
         await self.async_update()
 
@@ -410,21 +428,38 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         # remark "now" is a dummy parameter to avoid problems with
         # async_track_time_interval
 
-        self._attr_target_temperature = await self._async_read_register(
-            CALL_TYPE_REGISTER_HOLDING,
+        # do not allow multiple active calls to the same platform
+        if self._call_active:
+            return
+        self._call_active = True
+
+        result = await self._hub.async_pb_call(
+            self._slave,
             self._target_temperature_register[
                 HVACMODE_TO_TARG_TEMP_REG_INDEX_ARRAY[self._attr_hvac_mode]
             ],
+            self._count,
+            CALL_TYPE_REGISTER_HOLDING,
         )
+        self._call_active = False
 
-        self._attr_current_temperature = await self._async_read_register(
-            self._input_type, self._address
+        new_target_temperature = await self._async_read_register(result, 0)
+        if new_target_temperature != self._attr_target_temperature:
+            self._attr_target_temperature = new_target_temperature
+            self.async_write_ha_state()
+
+        result = await self._hub.async_pb_call(
+            self._slave, self._address, self._count, self._input_type
         )
         # Read the HVAC mode register if defined
         if self._hvac_mode_register is not None:
-            hvac_mode = await self._async_read_register(
-                CALL_TYPE_REGISTER_HOLDING, self._hvac_mode_register, raw=True
+            result = await self._hub.async_pb_call(
+                self._slave,
+                self._hvac_mode_register,
+                self._count,
+                CALL_TYPE_REGISTER_HOLDING,
             )
+            hvac_mode = await self._async_read_register(result, 0, raw=True)
 
             # Translate the value received
             if hvac_mode is not None:
@@ -474,22 +509,48 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         # register is "OFF", it will take precedence over the value
         # in the mode register.
         if self._hvac_onoff_register is not None:
-            onoff = await self._async_read_register(
-                CALL_TYPE_REGISTER_HOLDING, self._hvac_onoff_register, raw=True
+            result = await self._hub.async_pb_call(
+                self._slave,
+                self._hvac_onoff_register,
+                self._count,
+                CALL_TYPE_REGISTER_HOLDING,
             )
+
+            onoff = await self._async_read_register(result, 0, raw=True)
             if onoff == 0:
                 self._attr_hvac_mode = HVACMode.OFF
+                self.async_write_ha_state()
 
-        self.async_write_ha_state()
+        self._call_active = False
+
+    async def async_update_from_result(
+        self,
+        raw_result: ModbusResponse | None,
+        slave_id: int,
+        input_type: str,
+        address: int,
+    ) -> None:
+        """Update Target & Current Temperature."""
+        if raw_result is None:
+            self._attr_available = False
+            return
+        if input_type == CALL_TYPE_REGISTER_HOLDING:
+            new_value = await self._async_read_register(raw_result, address)
+            if new_value != self._attr_target_temperature:
+                self._attr_target_temperature = new_value
+                self.async_write_ha_state()
+        else:
+            new_value = await self._async_read_register(raw_result, address)
+            if new_value != self._attr_current_temperature:
+                self._attr_current_temperature = new_value
+                self.async_write_ha_state()
+        self._attr_available = True
 
     async def _async_read_register(
-        self, register_type: str, register: int, raw: bool | None = False
+        self, raw_result: ModbusResponse | None, address: int, raw: bool | None = False
     ) -> float | None:
         """Read register using the Modbus hub slave."""
-        result = await self._hub.async_pb_call(
-            self._slave, register, self._count, register_type
-        )
-        if result is None:
+        if raw_result is None:
             self._attr_available = False
             return -1
 
@@ -497,10 +558,10 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
             # Return the raw value read from the register, do not change
             # the object's state
             self._attr_available = True
-            return int(result.registers[0])
+            return int(raw_result.registers[0])
 
         # The regular handling of the value
-        self._value = self.unpack_structure_result(result.registers)
+        self._value = self.unpack_structure_result(raw_result.registers, address)
         if not self._value:
             self._attr_available = False
             return None

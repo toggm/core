@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from enocean.utils import combine_hex
 import voluptuous as vol
 
 from homeassistant.components.sensor import (
+    ENTITY_ID_FORMAT,
     PLATFORM_SCHEMA as SENSOR_PLATFORM_SCHEMA,
     RestoreSensor,
     SensorDeviceClass,
@@ -19,6 +21,7 @@ from homeassistant.const import (
     CONF_DEVICE_CLASS,
     CONF_ID,
     CONF_NAME,
+    LIGHT_LUX,
     PERCENTAGE,
     STATE_CLOSED,
     STATE_OPEN,
@@ -34,12 +37,19 @@ from .entity import EnOceanEntity
 
 CONF_MAX_TEMP = "max_temp"
 CONF_MIN_TEMP = "min_temp"
+CONF_MIN_ILLUMINANCE = "min_illuminance"
+CONF_MAX_ILLUMINANCE = "max_illuminance"
 CONF_RANGE_FROM = "range_from"
 CONF_RANGE_TO = "range_to"
+CONF_DATA_BYTE = "data_byte"
+CONF_PACKET_FILTER = "packet_filter"
+CONF_MASK = "mask"
+CONF_VALUE = "value"
 
 DEFAULT_NAME = "EnOcean sensor"
 
 SENSOR_TYPE_HUMIDITY = "humidity"
+SENSOR_TYPE_ILLUMINANCE = "illuminance"
 SENSOR_TYPE_POWER = "powersensor"
 SENSOR_TYPE_TEMPERATURE = "temperature"
 SENSOR_TYPE_WINDOWHANDLE = "windowhandle"
@@ -51,6 +61,33 @@ class EnOceanSensorEntityDescription(SensorEntityDescription):
 
     unique_id: Callable[[list[int]], str | None]
 
+
+SENSOR_DESC_HUMIDITY = EnOceanSensorEntityDescription(
+    key=SENSOR_TYPE_HUMIDITY,
+    name="Humidity",
+    native_unit_of_measurement=PERCENTAGE,
+    icon="mdi:water-percent",
+    device_class=SensorDeviceClass.HUMIDITY,
+    unique_id=lambda dev_id: f"{combine_hex(dev_id)}-{SENSOR_TYPE_HUMIDITY}",
+)
+
+SENSOR_DESC_ILLUMINANCE = EnOceanSensorEntityDescription(
+    key=SENSOR_TYPE_ILLUMINANCE,
+    name="Illuminance",
+    native_unit_of_measurement=LIGHT_LUX,
+    icon="mdi:brightness-7",
+    device_class=SensorDeviceClass.ILLUMINANCE,
+    unique_id=lambda dev_id: f"{combine_hex(dev_id)}-{SENSOR_TYPE_ILLUMINANCE}",
+)
+
+SENSOR_DESC_POWER = EnOceanSensorEntityDescription(
+    key=SENSOR_TYPE_POWER,
+    name="Power",
+    native_unit_of_measurement=UnitOfPower.WATT,
+    icon="mdi:power-plug",
+    device_class=SensorDeviceClass.POWER,
+    unique_id=lambda dev_id: f"{combine_hex(dev_id)}-{SENSOR_TYPE_POWER}",
+)
 
 SENSOR_DESC_TEMPERATURE = EnOceanSensorEntityDescription(
     key=SENSOR_TYPE_TEMPERATURE,
@@ -96,6 +133,15 @@ PLATFORM_SCHEMA = SENSOR_PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_MIN_TEMP, default=0): vol.Coerce(int),
         vol.Optional(CONF_RANGE_FROM, default=255): cv.positive_int,
         vol.Optional(CONF_RANGE_TO, default=0): cv.positive_int,
+        vol.Optional(CONF_DATA_BYTE, default=3): cv.positive_int,
+        vol.Optional(CONF_MAX_ILLUMINANCE, default=1000): vol.Coerce(int),
+        vol.Optional(CONF_MIN_ILLUMINANCE, default=0): vol.Coerce(int),
+        vol.Optional(CONF_PACKET_FILTER): vol.Maybe(
+            {
+                vol.Required(CONF_MASK): vol.All(cv.ensure_list, [vol.Coerce(int)]),
+                vol.Required(CONF_VALUE): vol.All(cv.ensure_list, [vol.Coerce(int)]),
+            }
+        ),
     }
 )
 
@@ -117,15 +163,38 @@ def setup_platform(
         temp_max: int = config[CONF_MAX_TEMP]
         range_from: int = config[CONF_RANGE_FROM]
         range_to: int = config[CONF_RANGE_TO]
+        data_byte = config.get(CONF_DATA_BYTE)
+        packet_filter = config.get(CONF_PACKET_FILTER)
         entities = [
             EnOceanTemperatureSensor(
                 dev_id,
                 dev_name,
-                SENSOR_DESC_TEMPERATURE,
                 scale_min=temp_min,
                 scale_max=temp_max,
                 range_from=range_from,
                 range_to=range_to,
+                data_byte=data_byte,
+                packet_filter=packet_filter,
+            )
+        ]
+
+    elif sensor_type == SENSOR_TYPE_ILLUMINANCE:
+        illuminance_min = config.get(CONF_MIN_ILLUMINANCE)
+        illuminance_max = config.get(CONF_MAX_ILLUMINANCE)
+        range_from = config[CONF_RANGE_FROM]
+        range_to = config[CONF_RANGE_TO]
+        data_byte = config.get(CONF_DATA_BYTE)
+        packet_filter = config.get(CONF_PACKET_FILTER)
+        entities = [
+            EnOceanIlluminanceSensor(
+                dev_id,
+                dev_name,
+                illuminance_min,
+                illuminance_max,
+                range_from=range_from,
+                range_to=range_to,
+                data_byte=data_byte,
+                packet_filter=packet_filter,
             )
         ]
 
@@ -155,6 +224,7 @@ class EnOceanSensor(EnOceanEntity, RestoreSensor):
         self.entity_description = description
         self._attr_name = f"{description.name} {dev_name}"
         self._attr_unique_id = description.unique_id(dev_id)
+        self.entity_id = ENTITY_ID_FORMAT.format("_".join(str(e) for e in dev_id))
 
     async def async_added_to_hass(self) -> None:
         """Call when entity about to be added to hass."""
@@ -190,7 +260,55 @@ class EnOceanPowerSensor(EnOceanSensor):
             self.schedule_update_ha_state()
 
 
-class EnOceanTemperatureSensor(EnOceanSensor):
+class EnOceanMinMaxWithScaleAndDatabyteSensor(EnOceanSensor):
+    """Representation of an EnOcean sensor reading value from a data byte, configurable with a min-max value and allowed data range."""
+
+    def __init__(
+        self,
+        dev_id,
+        dev_name,
+        sensor_type,
+        scale_min,
+        scale_max,
+        range_from,
+        range_to,
+        data_byte,
+        packet_filter,
+    ) -> None:
+        """Initialize the EnOcean temperature sensor device."""
+        super().__init__(dev_id, dev_name, sensor_type)
+        self._scale_min = scale_min
+        self._scale_max = scale_max
+        self.range_from = range_from
+        self.range_to = range_to
+        self.data_byte = data_byte
+        self.packet_filter: dict[str, Any] = packet_filter
+        self.entity_id = ENTITY_ID_FORMAT.format(
+            "_".join(str(e) for e in dev_id) + "_" + str(data_byte)
+        )
+
+    def value_changed(self, packet):
+        """Update the internal state of the sensor."""
+        if self.packet_filter:
+            for data, mask, value in zip(
+                packet.data,
+                self.packet_filter[CONF_MASK],
+                self.packet_filter[CONF_VALUE],
+                strict=False,
+            ):
+                if mask == 0xFF and data != value:
+                    return
+
+        scalescale = self._scale_max - self._scale_min
+        diff = self.range_to - self.range_from
+        raw_val = packet.data[self.data_byte]
+        value = scalescale / diff * (raw_val - self.range_from)
+        value += self._scale_min
+        self._attr_native_value = round(value, 1)
+        self.schedule_update_ha_state()
+
+
+class EnOceanTemperatureSensor(EnOceanMinMaxWithScaleAndDatabyteSensor):
     """Representation of an EnOcean temperature sensor device.
 
     EEPs (EnOcean Equipment Profiles):
@@ -212,31 +330,25 @@ class EnOceanTemperatureSensor(EnOceanSensor):
         self,
         dev_id: list[int],
         dev_name: str,
-        description: EnOceanSensorEntityDescription,
-        *,
         scale_min: int,
         scale_max: int,
         range_from: int,
         range_to: int,
+        data_byte,
+        packet_filter,
     ) -> None:
         """Initialize the EnOcean temperature sensor device."""
-        super().__init__(dev_id, dev_name, description)
-        self._scale_min = scale_min
-        self._scale_max = scale_max
-        self.range_from = range_from
-        self.range_to = range_to
-
-    def value_changed(self, packet):
-        """Update the internal state of the sensor."""
-        if packet.data[0] != 0xA5:
-            return
-        temp_scale = self._scale_max - self._scale_min
-        temp_range = self.range_to - self.range_from
-        raw_val = packet.data[3]
-        temperature = temp_scale / temp_range * (raw_val - self.range_from)
-        temperature += self._scale_min
-        self._attr_native_value = round(temperature, 1)
-        self.schedule_update_ha_state()
+        super().__init__(
+            dev_id,
+            dev_name,
+            SENSOR_DESC_TEMPERATURE,
+            scale_min,
+            scale_max,
+            range_from,
+            range_to,
+            data_byte,
+            packet_filter,
+        )
 
 
 class EnOceanHumiditySensor(EnOceanSensor):
@@ -255,6 +367,59 @@ class EnOceanHumiditySensor(EnOceanSensor):
         humidity = packet.data[2] * 100 / 250
         self._attr_native_value = round(humidity, 1)
         self.schedule_update_ha_state()
+
+
+class EnOceanIlluminanceSensor(EnOceanMinMaxWithScaleAndDatabyteSensor):
+    """Representation of an EnOcean light sensor device.
+
+    EEPs (EnOcean Equipment Profiles):
+
+    EEPs with a scale from 0 to 255:
+    - A5-06-01 (300 to 30000 lx)
+    - A5-06-02 (0 to 510 lx)
+    - A5-06-05 (0 to 5100 lx)
+    - A5-08-01 (0 to 510 lx)
+    - A5-08-02 (0 to 1020 lx)
+    - A5-08-03 (0 to 1530 lx)
+
+    For the following EEPs the scales must be set to 0 to 250:
+    - A5-10-1B (0 to 1000 lx)
+    - A5-14-02 (0 to 1000 lx)
+    - A5-14-04 (0 to 1000 lx)
+    - A5-14-06 (0 to 1000 lx)
+
+    For the following EEPs the scales must be set to 0 to 1000:
+    - A5-06-03 (0 to 1000 lx)
+    - A5-07-04 (0 to 1000 lx)
+
+    For the following EEPs the databit must be set to 1 and scale set to 0 to 250:
+    - A5-10-18 (0 to 1000 lx)
+    - A5-10-1C (0 to 1000 lx)
+    """
+
+    def __init__(
+        self,
+        dev_id,
+        dev_name,
+        scale_min,
+        scale_max,
+        range_from,
+        range_to,
+        data_byte,
+        packet_filter,
+    ) -> None:
+        """Initialize the EnOcean temperature sensor device."""
+        super().__init__(
+            dev_id,
+            dev_name,
+            SENSOR_DESC_ILLUMINANCE,
+            scale_min,
+            scale_max,
+            range_from,
+            range_to,
+            data_byte,
+            packet_filter,
+        )
 
 
 class EnOceanWindowHandle(EnOceanSensor):

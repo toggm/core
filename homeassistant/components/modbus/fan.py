@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.fan import FanEntity, FanEntityFeature
+from homeassistant.components.fan import ENTITY_ID_FORMAT, FanEntity, FanEntityFeature
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -49,6 +49,8 @@ class ModbusFan(BaseSwitch, FanEntity):
             self._attr_supported_features |= (
                 FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON
             )
+        
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
 
     async def async_turn_on(
         self,

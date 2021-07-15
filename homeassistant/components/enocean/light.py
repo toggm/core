@@ -10,6 +10,7 @@ import voluptuous as vol
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
+    ENTITY_ID_FORMAT,
     PLATFORM_SCHEMA as LIGHT_PLATFORM_SCHEMA,
     ColorMode,
     LightEntity,
@@ -63,6 +64,26 @@ class EnOceanLight(EnOceanEntity, LightEntity):
         self._sender_id = sender_id
         self._attr_unique_id = str(combine_hex(dev_id))
         self._attr_name = dev_name
+        self.entity_id = ENTITY_ID_FORMAT.format("_".join(str(e) for e in dev_id))
+
+    @property
+    def name(self):
+        """Return the name of the device if any."""
+        return self.dev_name
+
+    @property
+    def brightness(self):
+        """Brightness of the light.
+
+        This method is optional. Removing it indicates to Home Assistant
+        that brightness is not supported for this light.
+        """
+        return self._brightness
+
+    @property
+    def is_on(self):
+        """If light is on."""
+        return self._on_state
 
     def turn_on(self, **kwargs: Any) -> None:
         """Turn the light source on or sets a specific dimmer value."""
