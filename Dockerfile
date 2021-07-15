@@ -12,6 +12,12 @@ ARG QEMU_CPU
 
 WORKDIR /usr/src
 
+# Need to install not-yet merged enocean module manually
+RUN \
+    git clone -b dev/esp2_support https://github.com/toggm/enocean.git enocean  \
+    && cd enocean \
+    && pip3 install .
+
 ## Setup Home Assistant Core dependencies
 COPY requirements.txt homeassistant/
 COPY homeassistant/package_constraints.txt homeassistant/homeassistant/
