@@ -15,6 +15,7 @@ from homeassistant.const import (
     CONF_COUNT,
     CONF_DELAY,
     CONF_DEVICE_CLASS,
+    CONF_ID,
     CONF_NAME,
     CONF_OFFSET,
     CONF_SCAN_INTERVAL,
@@ -80,6 +81,8 @@ class BasePlatform(Entity):
         """Initialize the Modbus binary sensor."""
         self._hub = hub
         self._slave = entry.get(CONF_SLAVE, None) or entry.get(CONF_DEVICE_ADDRESS, 0)
+        self._id = entry[CONF_ID]
+        self._name = entry[CONF_NAME]
         self._address = int(entry[CONF_ADDRESS])
         self._input_type = entry[CONF_INPUT_TYPE]
         self._value: str | None = None
@@ -110,6 +113,7 @@ class BasePlatform(Entity):
         self._nan_value = entry.get(CONF_NAN_VALUE, None)
         self._zero_suppress = get_optional_numeric_config(CONF_ZERO_SUPPRESS)
         self._scan_group = entry[CONF_SCAN_GROUP]
+        self._unique_id = f"modbus_{hub._config_name}_{self._slave}_{self._input_type}_{self._address}"
         if (
             self._slave
             and self._input_type
@@ -165,6 +169,15 @@ class BasePlatform(Entity):
         if update:
             self._attr_available = False
             self.async_write_ha_state()
+    @property
+    def unique_id(self) -> str | None:
+        """Return a unique ID."""
+        return self._unique_id
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return self._name
 
     async def async_base_added_to_hass(self) -> None:
         """Handle entity which will be added."""
