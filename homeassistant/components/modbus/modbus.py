@@ -15,7 +15,6 @@ from homeassistant.const import (
     CONF_METHOD,
     CONF_NAME,
     CONF_PORT,
-    CONF_SCAN_INTERVAL,
     CONF_TIMEOUT,
     CONF_TYPE,
     EVENT_HOMEASSISTANT_STOP,
@@ -45,6 +44,8 @@ from .const import (
     CONF_RETRIES,
     CONF_RETRY_ON_EMPTY,
     CONF_RTUOVERTCP,
+    CONF_SCAN_GROUPS,
+    CONF_SCAN_INTERVAL_MILLIS,
     CONF_SERIAL,
     CONF_STOPBITS,
     CONF_TCP,
@@ -220,7 +221,6 @@ class ModbusHub:
         self._config_name = client_config[CONF_NAME]
         self._config_type = client_config[CONF_TYPE]
         self._config_delay = client_config[CONF_DELAY]
-        self._scan_interval = int(client_config[CONF_SCAN_INTERVAL])
         self._pb_call = PYMODBUS_CALL.copy()
         self._pb_class = {
             CONF_SERIAL: ModbusSerialClient,
@@ -251,7 +251,16 @@ class ModbusHub:
             self._pb_params["host"] = client_config[CONF_HOST]
             if self._config_type == CONF_RTUOVERTCP:
                 self._pb_params["framer"] = ModbusRtuFramer
-        self._update_listeners = dict[Any, List[ModbusUpdateListener]]()
+        self._update_listeners_by_scan_group = dict[
+            str, dict[Any, List[ModbusUpdateListener]]
+        ]()
+        self._scan_groups = dict[str, int]()
+        for entry in client_config[CONF_SCAN_GROUPS]:
+            name = entry[CONF_NAME]
+            self._scan_groups[name] = int(entry[CONF_SCAN_INTERVAL_MILLIS])
+            self._update_listeners_by_scan_group[name] = dict[
+                Any, List[ModbusUpdateListener]
+            ]()
 
         Defaults.Timeout = client_config[CONF_TIMEOUT]
 
@@ -298,47 +307,71 @@ class ModbusHub:
 
     def start_update_listener(self):
         """Possibly start monitoring of updates."""
-        if self._scan_interval > 0:
+        for (scan_group, interval_millis) in self._scan_groups.items():
             async_track_time_interval(
-                self.hass, self.async_update, timedelta(seconds=self._scan_interval)
+                self.hass,
+                self.async_update_function(scan_group),
+                timedelta(milliseconds=interval_millis),
             )
 
-    def register_update_listener(self, slave, input_type, address, func):
+    def register_update_listener(
+        self,
+        scan_group,
+        slave,
+        input_type,
+        address,
+        func: Callable[[Any, str, str, int], None],
+    ):
         """Register update listener."""
-        _LOGGER.debug("Register update listener %s, %s, %s", slave, input_type, address)
+        _LOGGER.debug(
+            "Register update listener slave=%s, input_type=%s, address=%s in scan_group=%s",
+            slave,
+            input_type,
+            address,
+            scan_group,
+        )
+        update_listeners = self._update_listeners_by_scan_group[scan_group]
         key = (slave, input_type)
-        if key in self._update_listeners:
-            self._update_listeners[key].append(
+        if key in update_listeners:
+            update_listeners[key].append(
                 ModbusUpdateListener(slave, input_type, address, func)
             )
         else:
-            self._update_listeners[key] = [
+            update_listeners[key] = [
                 ModbusUpdateListener(slave, input_type, address, func)
             ]
 
-    @callback
-    async def async_update(self, now=None):
-        """Update the state of all entities."""
-        # remark "now" is a dummy parameter to avoid problems with
-        # async_track_time_interval
-        for ((slave, input_type), listeners) in self._update_listeners.items():
-            min_address = 1000
-            max_address = 0
-            for listener in listeners:
-                min_address = min(min_address, listener._address)
-                max_address = max(max_address, listener._address)
-            _LOGGER.debug(
-                "query modbus: slave=%s, minAdress=%s, maxAdress=%s, input_type=%s",
-                slave,
-                min_address,
-                max_address,
-                input_type,
-            )
-            result = await self.async_pymodbus_call(
-                slave, min_address, max_address + 1 - min_address, input_type
-            )
-            for listener in listeners:
-                await listener.notify(result, min_address)
+    def async_update_function(self, scan_group):
+        """Return async update function per scan group."""
+
+        @callback
+        async def async_update(now=None):
+            """Update the state of all entities in a given scan group."""
+            # remark "now" is a dummy parameter to avoid problems with
+            # async_track_time_interval
+            for (
+                (slave, input_type),
+                listeners,
+            ) in self._update_listeners_by_scan_group[scan_group].items():
+                min_address = 100000
+                max_address = 0
+                for listener in listeners:
+                    min_address = min(min_address, listener._address)
+                    max_address = max(max_address, listener._address)
+                _LOGGER.debug(
+                    "query modbus: slave=%s, minAdress=%s, maxAdress=%s, input_type=%s",
+                    slave,
+                    min_address,
+                    max_address,
+                    input_type,
+                )
+                result = await self.async_pymodbus_call(
+                    slave, min_address, max_address + 1 - min_address, input_type
+                )
+                for listener in listeners:
+                    await listener.notify(result, min_address)
+
+        return async_update
 
     def _pymodbus_close(self):
         """Close sync. pymodbus."""

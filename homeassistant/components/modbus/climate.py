@@ -91,6 +91,7 @@ class ModbusThermostat(BasePlatform, RestoreEntity, ClimateEntity):
         self._temp_step = config[CONF_STEP]
         self._swap = config[CONF_SWAP]
         hub.register_update_listener(
+            self._scan_group,
             self._slave,
             CALL_TYPE_REGISTER_HOLDING,
             self._target_temperature_register,
