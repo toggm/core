@@ -4,8 +4,9 @@ from __future__ import annotations
 from datetime import datetime
 import struct
 from typing import Any
+import logging
 
-from homeassistant.components.climate import ClimateEntity
+from homeassistant.components.climate import ENTITY_ID_FORMAT, ClimateEntity
 from homeassistant.components.climate.const import ClimateEntityFeature, HVACMode
 from homeassistant.const import (
     ATTR_TEMPERATURE,
@@ -38,6 +39,7 @@ from .modbus import ModbusHub
 
 PARALLEL_UPDATES = 1
 
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_platform(
     hass: HomeAssistant,
@@ -71,6 +73,7 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
     ) -> None:
         """Initialize the modbus thermostat."""
         super().__init__(hub, config)
+        self.entity_id = ENTITY_ID_FORMAT.format(self._id)
         self._target_temperature_register = config[CONF_TARGET_TEMP]
         self._unit = config[CONF_TEMPERATURE_UNIT]
         hub.register_update_listener(
