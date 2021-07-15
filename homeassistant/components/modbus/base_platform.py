@@ -48,6 +48,7 @@ from .const import (
     CONF_MIN_VALUE,
     CONF_PRECISION,
     CONF_SCALE,
+    CONF_SCAN_GROUP,
     CONF_STATE_OFF,
     CONF_STATE_ON,
     CONF_SWAP,
@@ -106,14 +107,19 @@ class BasePlatform(Entity):
         self._min_value = get_optional_numeric_config(CONF_MIN_VALUE)
         self._max_value = get_optional_numeric_config(CONF_MAX_VALUE)
         self._zero_suppress = get_optional_numeric_config(CONF_ZERO_SUPPRESS)
+        self._scan_group = entry[CONF_SCAN_GROUP]
         if (
             self._slave
             and self._input_type
             and self._address is not None
-            and self._scan_interval == 0
+            and self._scan_group is not None
         ):
             hub.register_update_listener(
-                self._slave, self._input_type, self._address, self.update
+                self._scan_group,
+                self._slave,
+                self._input_type,
+                self._address,
+                self.update,
             )
 
     @abstractmethod
@@ -136,6 +142,13 @@ class BasePlatform(Entity):
             )
         self._attr_available = True
         self.async_write_ha_state()
+    
+    async def async_base_added_to_hass(self):
+        """Handle entity which will be added."""
+        if self._scan_interval > 0 and self._scan_group is None:
+            async_track_time_interval(
+                self.hass, self.async_update, timedelta(seconds=self._scan_interval)
+            )
 
     @callback
     def async_hold(self, update: bool = True) -> None:
@@ -297,7 +310,11 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
             self._state_on = config[CONF_VERIFY].get(CONF_STATE_ON, self.command_on)
             self._state_off = config[CONF_VERIFY].get(CONF_STATE_OFF, self._command_off)
             hub.register_update_listener(
-                self._slave, self._verify_type, self._verify_address, self.update
+                self._scan_group,
+                self._slave,
+                self._verify_type,
+                self._verify_address,
+                self.update,
             )
         else:
             self._verify_active = False
