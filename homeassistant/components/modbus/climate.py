@@ -94,13 +94,14 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
             CONF_TARGET_TEMP_WRITE_REGISTERS
         ]
         self._unit = config[CONF_TEMPERATURE_UNIT]
-        hub.register_update_listener(
-            self._scan_group,
-            self._slave,
-            CALL_TYPE_REGISTER_HOLDING,
-            self._target_temperature_register,
-            self.update,
-        )
+        if self._scan_group is not None:
+            hub.register_update_listener(
+                self._scan_group,
+                self._slave,
+                CALL_TYPE_REGISTER_HOLDING,
+                self._target_temperature_register,
+                self.update,
+            )
 
         self._attr_current_temperature = None
         self._attr_target_temperature = None
