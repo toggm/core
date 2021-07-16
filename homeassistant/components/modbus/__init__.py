@@ -55,6 +55,7 @@ from .const import (
     CALL_TYPE_DISCRETE,
     CALL_TYPE_REGISTER_HOLDING,
     CALL_TYPE_REGISTER_INPUT,
+    CONF_ADDRESS_CLOSE,
     CONF_BAUDRATE,
     CONF_BYTESIZE,
     CONF_CLIMATES,
@@ -211,12 +212,11 @@ CLIMATE_SCHEMA = vol.All(
 
 COVERS_SCHEMA = BASE_COMPONENT_SCHEMA.extend(
     {
-        vol.Optional(CONF_INPUT_TYPE, default=CALL_TYPE_REGISTER_HOLDING,): vol.In(
-            [
-                CALL_TYPE_REGISTER_HOLDING,
-                CALL_TYPE_COIL,
-            ]
-        ),
+        vol.Optional(CONF_ADDRESS_CLOSE): cv.positive_int,
+        vol.Optional(
+            CONF_INPUT_TYPE,
+            default=CALL_TYPE_REGISTER_HOLDING,
+        ): vol.In([CALL_TYPE_REGISTER_HOLDING, CALL_TYPE_COIL]),
         vol.Optional(CONF_DEVICE_CLASS): COVER_DEVICE_CLASSES_SCHEMA,
         vol.Optional(CONF_STATE_CLOSED, default=0): cv.positive_int,
         vol.Optional(CONF_STATE_CLOSING, default=3): cv.positive_int,
@@ -227,6 +227,12 @@ COVERS_SCHEMA = BASE_COMPONENT_SCHEMA.extend(
             CONF_STATUS_REGISTER_TYPE,
             default=CALL_TYPE_REGISTER_HOLDING,
         ): vol.In([CALL_TYPE_REGISTER_HOLDING, CALL_TYPE_REGISTER_INPUT]),
+        vol.Optional(CONF_VERIFY): vol.Maybe(
+            {
+                vol.Optional(CONF_ADDRESS): cv.positive_int,
+                vol.Optional(CONF_ADDRESS_CLOSE): cv.positive_int,
+            }
+        ),
     }
 )
 

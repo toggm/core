@@ -91,13 +91,14 @@ class ModbusThermostat(BasePlatform, RestoreEntity, ClimateEntity):
         self._min_temp = config[CONF_MIN_TEMP]
         self._temp_step = config[CONF_STEP]
         self._swap = config[CONF_SWAP]
-        hub.register_update_listener(
-            self._scan_group,
-            self._slave,
-            CALL_TYPE_REGISTER_HOLDING,
-            self._target_temperature_register,
-            self.update,
-        )
+        if self._scan_group is not None:
+            hub.register_update_listener(
+                self._scan_group,
+                self._slave,
+                CALL_TYPE_REGISTER_HOLDING,
+                self._target_temperature_register,
+                self.update,
+            )
 
     async def async_added_to_hass(self):
         """Handle entity which will be added."""
