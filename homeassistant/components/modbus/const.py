@@ -68,6 +68,7 @@ CONF_ZERO_SUPPRESS = "zero_suppress"
 CONF_SCAN_GROUPS = "scan_groups"
 CONF_SCAN_GROUP = "scan_group"
 CONF_SCAN_INTERVAL_MILLIS = "scan_interval_millis"
+CONF_ADDRESS_CLOSE = "address_close"
 
 RTUOVERTCP = "rtuovertcp"
 SERIAL = "serial"
