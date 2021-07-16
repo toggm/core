@@ -76,13 +76,14 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         self.entity_id = ENTITY_ID_FORMAT.format(self._id)
         self._target_temperature_register = config[CONF_TARGET_TEMP]
         self._unit = config[CONF_TEMPERATURE_UNIT]
-        hub.register_update_listener(
-            self._scan_group,
-            self._slave,
-            CALL_TYPE_REGISTER_HOLDING,
-            self._target_temperature_register,
-            self.update,
-        )
+        if self._scan_group is not None:
+            hub.register_update_listener(
+                self._scan_group,
+                self._slave,
+                CALL_TYPE_REGISTER_HOLDING,
+                self._target_temperature_register,
+                self.update,
+            )
 
         self._attr_current_temperature = None
         self._attr_target_temperature = None
