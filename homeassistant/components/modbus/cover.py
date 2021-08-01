@@ -9,6 +9,7 @@ from homeassistant.components.cover import (
     ENTITY_ID_FORMAT,
     SUPPORT_CLOSE,
     SUPPORT_OPEN,
+    SUPPORT_STOP,
     CoverEntity,
 )
 from homeassistant.const import (
@@ -161,7 +162,13 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
     @property
     def supported_features(self):
         """Flag supported features."""
-        return SUPPORT_OPEN | SUPPORT_CLOSE
+        flags = SUPPORT_OPEN | SUPPORT_CLOSE
+        if (
+            self._input_type == CALL_TYPE_COIL
+            and self._write_address_open != self._write_address_close
+        ):
+            flags = flags | SUPPORT_STOP
+        return flags
 
     @property
     def is_opening(self):
