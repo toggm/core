@@ -3,8 +3,16 @@ from __future__ import annotations
 
 from datetime import timedelta
 from typing import Any, Callable
+import logging
 
-from homeassistant.components.cover import ENTITY_ID_FORMAT, CoverEntity, CoverEntityFeature
+from homeassistant.components.cover import (
+    ENTITY_ID_FORMAT,
+    SUPPORT_CLOSE,
+    SUPPORT_OPEN,
+    SUPPORT_STOP,
+    CoverEntity,
+    CoverEntityFeature
+)
 from homeassistant.const import (
     CONF_ADDRESS,
     CONF_COVERS,
@@ -42,6 +50,7 @@ from .modbus import ModbusHub
 
 PARALLEL_UPDATES = 1
 
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_platform(
     hass: HomeAssistant,
@@ -153,7 +162,28 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
                 STATE_UNAVAILABLE: None,
                 STATE_UNKNOWN: None,
             }
-            self._set_attr_state(convert[state.state])
+            self._set_attr_state = convert[state.state]
+
+    @property
+    def supported_features(self):
+        """Flag supported features."""
+        flags = SUPPORT_OPEN | SUPPORT_CLOSE
+        if (
+            self._input_type == CALL_TYPE_COIL
+            and self._write_address_open != self._write_address_close
+        ):
+            flags = flags | SUPPORT_STOP
+        return flags
+
+    @property
+    def is_opening(self):
+        """Return if the cover is opening or not."""
+        return self._value == self._state_opening
+
+    @property
+    def is_closing(self):
+        """Return if the cover is closing or not."""
+        return self._value == self._state_closing
 
     def _set_attr_state(self, value: str | bool | int) -> None:
         """Convert received value to HA state."""
