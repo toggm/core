@@ -127,21 +127,14 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
         """Initialize update listeners."""
         # override default behaviour as we register based on the verify address
         if self._slave and self._input_type and self._scan_group is not None:
-            if self._address_open is not None:
+            # Register max address of listeners to ensure we query both coils
+            max_address = max(self._address_open, self._address_close)
+            if max_address is not None:
                 self._hub.register_update_listener(
                     self._scan_group,
                     self._slave,
                     self._input_type,
-                    self._address_open,
-                    self.update,
-                )
-
-            if self._address_close is not None:
-                self._hub.register_update_listener(
-                    self._scan_group,
-                    self._slave,
-                    self._input_type,
-                    self._address_close,
+                    max_address,
                     self.update,
                 )
 
@@ -251,7 +244,7 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
         # remark "now" is a dummy parameter to avoid problems with
         # async_track_time_interval
         start_address = min(self._address_open, self._address_close)
-        end_address = min(self._address_open, self._address_close)
+        end_address = max(self._address_open, self._address_close)
         result = await self._hub.async_pymodbus_call(
             self._slave, start_address, end_address - start_address, self._input_type
         )
@@ -265,21 +258,25 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
             return None
         self._available = True
         if input_type == CALL_TYPE_COIL:
-            _LOGGER.debug(
-                "update cover slave=%s, input_type=%s, address=%s -> result=%s",
-                slaveId,
-                input_type,
-                address,
-                result.bits,
-            )
             if self._address_open != self._address_close:
                 # Get min_address of open and close, address will be relative to this address
-                start_address = min(self._address_open, self._address_close)
+                start_address = max(self._address_open, self._address_close)
                 opening = bool(
                     result.bits[address + (self._address_open - start_address)] & 1
                 )
                 closing = bool(
                     result.bits[address + (self._address_close - start_address)] & 1
+                )
+                _LOGGER.debug(
+                    "update cover slave=%s, input_type=%s, address=%s, address_open=%s, address_close=%s -> result=%s, opening=%s, closing=%s",
+                    slaveId,
+                    input_type,
+                    address,
+                    (self._address_open - start_address),
+                    (self._address_close - start_address),
+                    result.bits,
+                    opening,
+                    closing,
                 )
                 if opening:
                     self.update_value(self._state_opening)
@@ -292,6 +289,13 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
                     elif self._value == self._state_closing:
                         self.update_value(self._state_closed)
             else:
+                _LOGGER.debug(
+                    "update cover slave=%s, input_type=%s, address=%s -> result=%s",
+                    slaveId,
+                    input_type,
+                    address,
+                    result.bits,
+                )
                 self.update_value(bool(result.bits[address] & 1))
         else:
             _LOGGER.debug(
