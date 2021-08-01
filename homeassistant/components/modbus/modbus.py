@@ -333,7 +333,6 @@ class ModbusHub:
         self._config_delay = client_config[CONF_DELAY]
         self._pb_request: dict[str, RunEntry] = {}
         self._scan_interval = int(client_config[CONF_SCAN_INTERVAL])
-        self._pb_call = PYMODBUS_CALL.copy()
         self._pb_class = {
             SERIAL: ModbusSerialClient,
             TCP: ModbusTcpClient,
