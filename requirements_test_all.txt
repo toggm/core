@@ -315,7 +315,7 @@ emoji==1.2.0
 emulated_roku==0.2.1
 
 # homeassistant.components.enocean
-enocean==0.50
+enocean==0.60.2
 
 # homeassistant.components.enphase_envoy
 envoy_reader==0.19.0

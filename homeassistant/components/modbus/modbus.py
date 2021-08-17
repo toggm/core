@@ -2,6 +2,7 @@
 import asyncio
 from datetime import timedelta
 import logging
+import typing
 from typing import Any, Callable, List
 
 from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient, ModbusUdpClient
@@ -9,12 +10,18 @@ from pymodbus.constants import Defaults
 from pymodbus.exceptions import ModbusException
 from pymodbus.transaction import ModbusRtuFramer
 
+from homeassistant.components.enocean.const import (
+    DATA_ENOCEAN,
+    DOMAIN as ENOCEAN_DOMAIN,
+    ENOCEAN_DONGLE,
+)
 from homeassistant.const import (
     CONF_DELAY,
     CONF_HOST,
     CONF_METHOD,
     CONF_NAME,
     CONF_PORT,
+    CONF_SLAVE,
     CONF_TIMEOUT,
     CONF_TYPE,
     EVENT_HOMEASSISTANT_STOP,
@@ -40,6 +47,10 @@ from .const import (
     CONF_BAUDRATE,
     CONF_BYTESIZE,
     CONF_CLOSE_COMM_ON_ERROR,
+    CONF_ENOCEAN,
+    CONF_ESP_VERSION,
+    CONF_INPUT_ADDRESS,
+    CONF_OUTPUT_ADDRESS,
     CONF_PARITY,
     CONF_RETRIES,
     CONF_RETRY_ON_EMPTY,
@@ -121,6 +132,12 @@ async def async_modbus_setup(
         # to avoid a racing problem
         if not await my_hub.async_setup():
             return False
+
+        # Register modbus enocean dongle
+        if conf_hub.get(CONF_ENOCEAN):
+            await my_hub.async_create_and_register_enocean_dongle(
+                conf_hub[CONF_ENOCEAN]
+            )
 
         # load platforms
         for component, conf_key in PLATFORMS:
@@ -297,6 +314,29 @@ class ModbusHub:
             self.start_update_listener()
 
         return True
+
+    async def async_create_and_register_enocean_dongle(
+        self, config: typing.Dict[str, Any]
+    ):
+        """Create and register enocean dongle."""
+        from .modbusenoceandongle import ModbusEnOceanDongle
+        from .modbusenoceanwago750adapter import ModbusEnOceanWago750Adapter
+
+        input_address = config[CONF_INPUT_ADDRESS]
+        output_address = config[CONF_OUTPUT_ADDRESS]
+        slave = config[CONF_SLAVE]
+        esp_version = config.get(CONF_ESP_VERSION, 3)
+        # Change as soon as other modbus enocean adapters are supported
+        adapter = ModbusEnOceanWago750Adapter(
+            self, slave, input_address, output_address
+        )
+        dongle = ModbusEnOceanDongle(self.hass, adapter, esp_version)
+        # Register dongle if not another enocean dongle was registered yet
+        if self.hass.config_entries.async_entries(ENOCEAN_DOMAIN):
+            _LOGGER.debug("Register modbus enocean dongle")
+            enocean_data = self.hass.data.setdefault(DATA_ENOCEAN, {})
+            await dongle.async_setup()
+            enocean_data[ENOCEAN_DONGLE] = dongle
 
     @callback
     def async_end_delay(self, args):
