@@ -58,8 +58,8 @@ class EnOceanDongle:
 
         if isinstance(packet, RadioPacket):
             _LOGGER.debug("Received radio packet: %s", packet)
-            dispatcher_send(self.hass, SIGNAL_RECEIVE_MESSAGE, packet)
-
+            self.hass.helpers.dispatcher.dispatcher_send(SIGNAL_RECEIVE_MESSAGE, packet)
+            
 
 def detect():
     """Return a list of candidate paths for USB ENOcean dongles.
