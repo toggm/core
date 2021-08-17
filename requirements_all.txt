@@ -655,7 +655,7 @@ energyflip-client==0.2.2
 energyzero==0.3.1
 
 # homeassistant.components.enocean
-enocean==0.50
+enocean==0.60.2
 
 # homeassistant.components.entur_public_transport
 enturclient==0.2.4
