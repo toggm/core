@@ -6,5 +6,6 @@
   "iot_class": "local_polling",
   "loggers": ["pymodbus"],
   "quality_scale": "gold",
-  "requirements": ["pymodbus==3.5.4"]
+  "requirements": ["pymodbus==3.5.4"],
+  "dependencies": ["enocean"]
 }
