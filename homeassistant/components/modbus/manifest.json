@@ -6,5 +6,6 @@
   "codeowners": ["@adamchengtkc", "@janiversen", "@vzahradnik"],
   "quality_scale": "gold",
   "iot_class": "local_polling",
-  "loggers": ["pymodbus"]
+  "loggers": ["pymodbus"],
+  "dependencies": ["enocean"]
 }
