@@ -1,15 +1,9 @@
 """Support for EnOcean devices."""
 import voluptuous as vol
 
-<<<<<<< HEAD
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
-from homeassistant.const import CONF_DEVICE
 from homeassistant.core import HomeAssistant
-=======
-from homeassistant import config_entries, core
-from homeassistant.config_entries import SOURCE_IMPORT
 from homeassistant.const import CONF_DEVICE, CONF_TYPE
->>>>>>> 6a32ff977b (integrated enocean over modbus support, added enocean implementation with esp2 support)
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
