@@ -18,16 +18,11 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.components.binary_sensor import (
-    DEVICE_CLASS_MOTION,
-    DEVICE_CLASS_WINDOW,
-)
 from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity
 from homeassistant.const import (
     CONF_DEVICE_CLASS,
     CONF_ID,
     CONF_NAME,
-    DEVICE_CLASS_BATTERY,
     DEVICE_CLASS_HUMIDITY,
     DEVICE_CLASS_ILLUMINANCE,
     DEVICE_CLASS_POWER,
@@ -35,8 +30,6 @@ from homeassistant.const import (
     PERCENTAGE,
     POWER_WATT,
     STATE_CLOSED,
-    STATE_OFF,
-    STATE_ON,
     STATE_OPEN,
     TEMP_CELSIUS,
 )
@@ -55,38 +48,17 @@ CONF_MAX_ILLUMINANCE = "max_illuminance"
 CONF_RANGE_FROM = "range_from"
 CONF_RANGE_TO = "range_to"
 CONF_DATA_BYTE = "data_byte"
-CONF_INVERTED = "inverted"
 CONF_PACKET_FILTER = "packet_filter"
 CONF_MASK = "mask"
 CONF_VALUE = "value"
 
 DEFAULT_NAME = "EnOcean sensor"
 
-SENSOR_TYPE_BATTERY = "battery"
-SENSOR_TYPE_BUTTON_PRESSED = "button"
 SENSOR_TYPE_HUMIDITY = "humidity"
 SENSOR_TYPE_ILLUMINANCE = "illuminance"
-SENSOR_TYPE_MOTION = "motion"
 SENSOR_TYPE_POWER = "powersensor"
 SENSOR_TYPE_TEMPERATURE = "temperature"
 SENSOR_TYPE_WINDOWHANDLE = "windowhandle"
-SENSOR_TYPE_WINDOW = "window"
-
-SENSOR_DESC_BATTERY = SensorEntityDescription(
-    key=SENSOR_TYPE_BATTERY,
-    name="Battery state",
-    native_unit_of_measurement=None,
-    icon="mdi:battery",
-    device_class=DEVICE_CLASS_BATTERY,
-)
-
-SENSOR_DESC_BUTTON_PRESSED = SensorEntityDescription(
-    key=SENSOR_TYPE_BUTTON_PRESSED,
-    name="Button pressed",
-    native_unit_of_measurement=None,
-    icon="mdi:gesture-tap-button",
-    device_class=None,
-)
 
 SENSOR_DESC_HUMIDITY = SensorEntityDescription(
     key=SENSOR_TYPE_HUMIDITY,
@@ -184,7 +156,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_DATA_BYTE, default=3): cv.positive_int,
         vol.Optional(CONF_MAX_ILLUMINANCE, default=1000): vol.Coerce(int),
         vol.Optional(CONF_MIN_ILLUMINANCE, default=0): vol.Coerce(int),
-        vol.Optional(CONF_INVERTED, default=0): cv.boolean,
         vol.Optional(CONF_PACKET_FILTER): vol.Maybe(
             {
                 vol.Required(CONF_MASK): vol.All(cv.ensure_list, [vol.Coerce(int)]),
@@ -259,17 +230,6 @@ def setup_platform(
 
     if entities:
         add_entities(entities)
-
-    elif (
-        sensor_type == SENSOR_TYPE_BATTERY
-        or sensor_type == SENSOR_TYPE_BUTTON_PRESSED
-        or sensor_type == SENSOR_TYPE_MOTION
-        or sensor_type == SENSOR_TYPE_WINDOW
-    ):
-        inverted = config.get(CONF_INVERTED)
-        add_entities(
-            [EnOceanOnOffSensor(dev_id, dev_name, sensor_type, inverted=inverted)]
-        )
 
 
 class EnOceanSensor(EnOceanEntity, RestoreEntity, SensorEntity):
@@ -495,101 +455,3 @@ class EnOceanWindowHandle(EnOceanSensor):
             self._attr_native_value = "tilt"
 
         self.schedule_update_ha_state()
-
-
-class EnOceanOnOffSensor(EnOceanSensor):
-    """Representation of an EnOcean on-off sensor device, storing state in data byte 0.0, most often part of a multi-sensor device.
-
-    EEPs (EnOcean Equipment Profiles):
-    - D5-00-01
-    - A5-10-02 (slide switch of operating panel)
-    - A5-10-06 (slide switch of operating panel)
-    - A5-10-09 (slide switch of operating panel)
-    - A5-10-0D (slide switch of operating panel)
-    - A5-10-11 (slide switch of operating panel)
-    - A5-10-14 (slide switch of operating panel)
-    - A5-10-20 (user intervention on device)
-    - A5-10-21 (user intervention on device)
-    - A5-10-21 (occupied)
-    - A5-11-02 (occupied)
-    - A5-11-04 (light on)
-    - A5-14-08 (vibration detected)
-    - A5-14-0A (vibration detected)
-    - A5-20-10 (HVAC unit running state)
-    - A5-20-11 (HVAC alarm error state)
-    - A5-38-08 (switching command)
-
-    For the following EEPs the inverted flag has to be set to true:
-    - A5-08-01 (occupancy button pressed)
-    - A5-08-03 (occupancy button pressed)
-    - A5-10-01 (occupancy button pressed)
-    - A5-10-05 (occupancy button pressed)
-    - A5-10-08 (occupancy button pressed)
-    - A5-10-0C (occupancy button pressed)
-    - A5-10-0D (occupancy button pressed)
-    - A5-10-10 (occupancy button pressed)
-    - A5-10-13 (occupancy button pressed)
-    - A5-10-16 (occupancy button pressed)
-    - A5-10-17 (occupancy button pressed)
-    - A5-10-18 (occupancy button pressed)
-    - A5-10-19 (room occupancied)
-    - A5-10-1A (occupancy button pressed)
-    - A5-10-1B (occupancy button pressed)
-    - A5-10-1C (occupancy button pressed)
-    - A5-10-1D (occupancy button pressed)
-    - A5-10-1F (occupancy button pressed)
-    - A5-13-07 (battery low=0, battery ok=1)
-    - A5-13-08 (battery low=0, battery ok=1)
-    - A5-20-12 (room occupancied)
-    """
-
-    def __init__(
-        self,
-        dev_id,
-        dev_name,
-        sensor_type,
-        state_on=STATE_ON,
-        state_off=STATE_OFF,
-        inverted: bool = False,
-    ):
-        """Initialize the EnOcean on-off sensor device."""
-        super().__init__(dev_id, dev_name, sensor_type)
-        self._state_on = state_on
-        self._state_off = state_off
-        self._inverted = inverted
-
-    def value_changed(self, packet):
-        """Update the internal state of the sensor."""
-        stateOn = (packet.data[0] & 0x01) == 0x01
-
-        if stateOn and not self._inverted:
-            self._state = self._state_on
-        else:
-            self._state = self._state_off
-
-        self.schedule_update_ha_state()
-
-
-class EnOceanOpenClosedSensor(EnOceanOnOffSensor):
-    """Repreents an EnOcean Open-Closed sensor device.
-
-    EEPs (EnOcean Equipment Profiles):
-    - D5-00-01
-
-    For the following EEPs the inverted flag has to be set to true:
-    - A5-10-0A (contact state, 1=Open)
-    - A5-10-08 (contact state, 1=Open)
-    - A5-14-01 to A5-14-04 (contact state, 1=Open)
-    - A5-30-02 (contact state, 1=Open)
-    """
-
-    def __init__(self, dev_id, dev_name, sensor_type, inverted: bool = False):
-        """Initialize EnOceanOpenClosedSensor."""
-        super().__init__(
-            dev_id,
-            dev_name,
-            sensor_type,
-            state_on=STATE_OPEN,
-            state_off=STATE_CLOSED,
-            inverted=inverted,
-        )
