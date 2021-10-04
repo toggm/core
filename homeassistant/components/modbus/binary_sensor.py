@@ -81,7 +81,7 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
             slaveId,
             input_type,
             address,
-            result.bits,
+            result.bits[address],
         )
         self._available = True
         self.update_value(result.bits[address] & 1)
