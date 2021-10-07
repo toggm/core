@@ -3,7 +3,11 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity
+from homeassistant.components.sensor import (
+    ENTITY_ID_FORMAT,
+    PLATFORM_SCHEMA,
+    SensorEntity,
+)
 from homeassistant.const import (
     CONF_DEVICE_CLASS,
     CONF_ID,
@@ -170,6 +174,7 @@ class EnOceanSensor(EnOceanEntity, RestoreEntity, SensorEntity):
         self._unit_of_measurement = SENSOR_TYPES[self._sensor_type]["unit"]
         self._icon = SENSOR_TYPES[self._sensor_type]["icon"]
         self._state = None
+        self.entity_id = ENTITY_ID_FORMAT.format("_".join(str(e) for e in dev_id))
 
     @property
     def name(self):
@@ -258,6 +263,9 @@ class EnOceanMinMaxWithScaleAndDatabyteSensor(EnOceanSensor):
         self.range_to = range_to
         self.data_byte = data_byte
         self.packet_filter: dict[str, Any] = packet_filter
+        self.entity_id = ENTITY_ID_FORMAT.format(
+            "_".join(str(e) for e in dev_id) + "_" + str(data_byte)
+        )
 
     def value_changed(self, packet):
         """Update the internal state of the sensor."""
