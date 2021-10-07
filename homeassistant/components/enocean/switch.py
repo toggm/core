@@ -6,7 +6,11 @@ from typing import Any
 from enocean.utils import combine_hex
 import voluptuous as vol
 
-from homeassistant.components.switch import PLATFORM_SCHEMA, SwitchEntity
+from homeassistant.components.switch import (
+    ENTITY_ID_FORMAT,
+    PLATFORM_SCHEMA,
+    SwitchEntity,
+)
 from homeassistant.const import CONF_ID, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, entity_registry as er
@@ -85,6 +89,17 @@ class EnOceanSwitch(EnOceanEntity, SwitchEntity):
         self.channel = channel
         self._attr_unique_id = generate_unique_id(dev_id, channel)
         self._attr_name = dev_name
+        self.entity_id = ENTITY_ID_FORMAT.format("_".join(str(e) for e in dev_id))
+
+    @property
+    def is_on(self):
+        """Return whether the switch is on or off."""
+        return self._on_state
+
+    @property
+    def name(self):
+        """Return the device name."""
+        return self.dev_name
 
     def turn_on(self, **kwargs: Any) -> None:
         """Turn on the switch."""
