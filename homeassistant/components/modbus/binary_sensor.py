@@ -68,7 +68,7 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
         result = await self._hub.async_pymodbus_call(
             self._slave, self._address, 1, self._input_type
         )
-        self.update(result, self._slave, self._input_type, 0)
+        await self.update(result, self._slave, self._input_type, 0)
 
     async def update(self, result, slaveId, input_type, address):
         """Update the state of the sensor."""
