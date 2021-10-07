@@ -129,7 +129,7 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
         raw_result = await self._hub.async_pb_call(
             self._slave, self._address, self._count, self._input_type
         )
-        self.update(raw_result, self._slave, self._input_type, 0)
+        await self.update(raw_result, self._slave, self._input_type, 0)
 
     async def update(self, result, slaveId, input_type, address):
         """Update the state of the sensor."""
