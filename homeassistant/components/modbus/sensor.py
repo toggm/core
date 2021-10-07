@@ -4,31 +4,26 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import logging
 from typing import Any
-from homeassistant.components.modbus.const import DATA_TYPE_STRING
+
+from pymodbus.pdu import ModbusResponse
 
 from homeassistant.components.sensor import (
     CONF_STATE_CLASS,
+    ENTITY_ID_FORMAT,
     RestoreSensor,
     SensorEntity,
 )
 from homeassistant.const import (
-    CONF_DEVICE_CLASS,
-    CONF_NAME,
-    CONF_SENSORS,
-    CONF_UNIQUE_ID,
-    CONF_UNIT_OF_MEASUREMENT,
-)
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.components.sensor import ENTITY_ID_FORMAT, SensorEntity
-from homeassistant.const import (
     CONF_COUNT,
+    CONF_DEVICE_CLASS,
     CONF_NAME,
     CONF_OFFSET,
     CONF_SENSORS,
     CONF_STRUCTURE,
+    CONF_UNIQUE_ID,
     CONF_UNIT_OF_MEASUREMENT,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -92,7 +87,7 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
         self._unit_of_measurement = entry.get(CONF_UNIT_OF_MEASUREMENT)
         self._count = int(entry[CONF_COUNT])
         self._offset = entry[CONF_OFFSET]
-        self._structure = entry.get(CONF_STRUCTURE)
+        self._structure = entry[CONF_STRUCTURE]
 
     async def async_setup_slaves(
         self, hass: HomeAssistant, slave_count: int, entry: dict[str, Any]
@@ -126,14 +121,26 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
         # remark "now" is a dummy parameter to avoid problems with
         # async_track_time_interval
         self._cancel_call = None
+        if self._call_active:
+            return
+        self._call_active = True
         raw_result = await self._hub.async_pb_call(
             self._slave, self._address, self._count, self._input_type
         )
-        await self.update(raw_result, self._slave, self._input_type, 0)
+        self._call_active = False
+        await self.async_update_from_result(
+            raw_result, self._slave, self._input_type, 0
+        )
 
-    async def update(self, result, slaveId, input_type, address):
+    async def async_update_from_result(
+        self,
+        raw_result: ModbusResponse | None,
+        slave_id: int,
+        input_type: str,
+        address: int,
+    ) -> None:
         """Update the state of the sensor."""
-        if result is None:
+        if raw_result is None:
             if self._lazy_errors:
                 self._lazy_errors -= 1
                 self._cancel_call = async_call_later(
@@ -148,7 +155,7 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreSensor, SensorEntity):
             self.async_write_ha_state()
             return
 
-        result = self.unpack_structure_result(result.registers)
+        result = self.unpack_structure_result(raw_result.registers, address)
         if self._coordinator:
             if result:
                 result_array = list(

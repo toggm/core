@@ -5,16 +5,15 @@ import logging
 import queue
 from typing import Any
 
-from homeassistant.components.modbus.const import (
+from .const import (
     CALL_TYPE_REGISTER_HOLDING,
     CALL_TYPE_REGISTER_INPUT,
     CALL_TYPE_WRITE_REGISTER,
 )
-
 from .modbus import ModbusHub
 from .modbusenoceanadapter import ModbusEnoceanAdapter
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger("enocean.communicators.ModbusEnOceanWago750Adapter")
 
 
 class ModbusEnOceanWago750Adapter(ModbusEnoceanAdapter):
@@ -24,7 +23,7 @@ class ModbusEnOceanWago750Adapter(ModbusEnoceanAdapter):
 
     def __init__(
         self, hub: ModbusHub, slave: Any, input_address: int, output_address: int
-    ):
+    ) -> None:
         """Initialize Wago750365ModbusEnOceanAdapter."""
         self._hub = hub
         self._slave = slave
@@ -45,10 +44,12 @@ class ModbusEnOceanWago750Adapter(ModbusEnoceanAdapter):
     async def readNextByte(self) -> Any:
         """Read next byte."""
         if self.receive.empty():
-            bytes = await self.readNextBytesFromHub()
-            _LOGGER.debug("enocean received result from hub, size=%s", len(bytes))
-            for i in range(len(bytes)):
-                self.receive.put(bytes[i : i + 1])
+            bytesFromHub = await self.readNextBytesFromHub()
+            _LOGGER.debug(
+                "enocean received result from hub, size=%s", len(bytesFromHub)
+            )
+            for i in range(len(bytesFromHub)):
+                self.receive.put(bytesFromHub[i : i + 1])
         _LOGGER.debug("enocean readNextByte, buffer size=%s", self.receive.qsize())
         return self.receive.get()
 
@@ -69,7 +70,7 @@ class ModbusEnOceanWago750Adapter(ModbusEnoceanAdapter):
             await asyncio.sleep(0.1)
 
             # read control register
-            control = await self._hub.async_pymodbus_call(
+            control = await self._hub.async_pb_call(
                 self._slave, self._output_address, 2, CALL_TYPE_REGISTER_HOLDING
             )
             if control is None:
@@ -80,7 +81,7 @@ class ModbusEnOceanWago750Adapter(ModbusEnoceanAdapter):
             control_byte_on = (control_byte & 0x02) >> 1
 
             # read status bit
-            status = await self._hub.async_pymodbus_call(
+            status = await self._hub.async_pb_call(
                 self._slave, self._input_address, 2, CALL_TYPE_REGISTER_INPUT
             )
             if status is None:
@@ -113,13 +114,15 @@ class ModbusEnOceanWago750Adapter(ModbusEnoceanAdapter):
         _LOGGER.debug(
             "Status of enocean control register s=%s, result=%s", control, result
         )
-        bytes = bytearray(2)
-        bytes[0] = control_register1_bytes[0]
-        bytes[1] = control_register1_bytes[1] & 0xFD | control_register1_bytes[1] ^ 0x02
-        await self._hub.async_pymodbus_call(
+        bytesFromHub = bytearray(2)
+        bytesFromHub[0] = control_register1_bytes[0]
+        bytesFromHub[1] = (
+            control_register1_bytes[1] & 0xFD | control_register1_bytes[1] ^ 0x02
+        )
+        await self._hub.async_pb_call(
             self._slave,
             self._output_address,
-            int.from_bytes(bytes, byteorder="big", signed=False),
+            int.from_bytes(bytesFromHub, byteorder="big", signed=False),
             CALL_TYPE_WRITE_REGISTER,
         )
 
@@ -129,6 +132,6 @@ class ModbusEnOceanWago750Adapter(ModbusEnoceanAdapter):
 
     async def write(self, value: bytearray) -> None:
         """Write value to enocean adapter, not supported by this module."""
-        _LOGGER.warn(
-            "Sending values to EnOcean devices not supported by WAGO modbus adapter."
+        _LOGGER.warning(
+            "Sending values to EnOcean devices not supported by WAGO modbus adapter"
         )

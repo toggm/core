@@ -5,24 +5,22 @@ from enocean.utils import combine_hex
 import voluptuous as vol
 
 from homeassistant.components.binary_sensor import (
-    DEVICE_CLASS_MOTION,
-    DEVICE_CLASS_WINDOW,
     DEVICE_CLASSES_SCHEMA,
+    ENTITY_ID_FORMAT,
     PLATFORM_SCHEMA,
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.core import HomeAssistant
 from homeassistant.const import (
     CONF_DEVICE_CLASS,
     CONF_ID,
     CONF_NAME,
-    DEVICE_CLASS_BATTERY,
     STATE_CLOSED,
     STATE_OFF,
     STATE_ON,
     STATE_OPEN,
 )
+from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -44,7 +42,7 @@ SENSOR_TYPES = {
     SENSOR_TYPE_BATTERY: {
         "name": "Battery state",
         "icon": "mdi:battery",
-        "class": DEVICE_CLASS_BATTERY,
+        "class": BinarySensorDeviceClass.BATTERY,
     },
     SENSOR_TYPE_BUTTON_PRESSED: {
         "name": "Button pressed",
@@ -54,12 +52,12 @@ SENSOR_TYPES = {
     SENSOR_TYPE_MOTION: {
         "name": "Motion",
         "icon": "mdi:motion",
-        "class": DEVICE_CLASS_MOTION,
+        "class": BinarySensorDeviceClass.MOTION,
     },
     SENSOR_TYPE_WINDOW: {
         "name": "Window",
         "icon": "mdi:window",
-        "class": DEVICE_CLASS_WINDOW,
+        "class": BinarySensorDeviceClass.WINDOW,
     },
 }
 
@@ -83,18 +81,17 @@ def setup_platform(
     dev_id: list[int] = config[CONF_ID]
     dev_name: str = config[CONF_NAME]
     device_class: BinarySensorDeviceClass | None = config.get(CONF_DEVICE_CLASS)
+    inverted: bool = bool(config.get(CONF_INVERTED))
 
-    if (
-        device_class == SENSOR_TYPE_BATTERY
-        or device_class == SENSOR_TYPE_BUTTON_PRESSED
-        or device_class == SENSOR_TYPE_MOTION
+    if device_class in (
+        SENSOR_TYPE_BATTERY,
+        SENSOR_TYPE_BUTTON_PRESSED,
+        SENSOR_TYPE_MOTION,
     ):
-        inverted = config.get(CONF_INVERTED)
         add_entities(
             [EnOceanOnOffSensor(dev_id, dev_name, device_class, inverted=inverted)]
         )
     elif device_class == SENSOR_TYPE_WINDOW:
-        inverted = config.get(CONF_INVERTED)
         add_entities(
             [EnOceanOpenClosedSensor(dev_id, dev_name, device_class, inverted=inverted)]
         )
@@ -123,6 +120,17 @@ class EnOceanBinarySensor(EnOceanEntity, BinarySensorEntity):
         self.onoff = -1
         self._attr_unique_id = f"{combine_hex(dev_id)}-{device_class}"
         self._attr_name = dev_name
+        self.entity_id = ENTITY_ID_FORMAT.format("_".join(str(e) for e in dev_id))
+
+    @property
+    def name(self) -> str | None:
+        """Return the default name for the binary sensor."""
+        return self._attr_name
+
+    @property
+    def device_class(self) -> BinarySensorDeviceClass | None:
+        """Return the class of this sensor."""
+        return self._attr_device_class
 
     def value_changed(self, packet):
         """Fire an event with the data that have changed.
@@ -224,24 +232,25 @@ class EnOceanOnOffSensor(EnOceanBinarySensor):
 
     def __init__(
         self,
-        dev_id,
-        dev_name,
-        sensor_type,
+        dev_id: list[int],
+        dev_name: str,
+        device_class: BinarySensorDeviceClass | None,
         state_on=STATE_ON,
         state_off=STATE_OFF,
         inverted: bool = False,
-    ):
+    ) -> None:
         """Initialize the EnOcean on-off sensor device."""
-        super().__init__(dev_id, dev_name, sensor_type)
+        super().__init__(dev_id, dev_name, device_class)
         self._state_on = state_on
         self._state_off = state_off
         self._inverted = inverted
+        self._state = state_off
 
     def value_changed(self, packet):
         """Update the internal state of the sensor."""
-        stateOn = (packet.data[0] & 0x01) == 0x01
+        state_on = (packet.data[0] & 0x01) == 0x01
 
-        if stateOn and not self._inverted:
+        if state_on and not self._inverted:
             self._state = self._state_on
         else:
             self._state = self._state_off
@@ -262,12 +271,18 @@ class EnOceanOpenClosedSensor(EnOceanOnOffSensor):
     - A5-30-02 (contact state, 1=Open)
     """
 
-    def __init__(self, dev_id, dev_name, sensor_type, inverted: bool = False):
+    def __init__(
+        self,
+        dev_id: list[int],
+        dev_name: str,
+        device_class: BinarySensorDeviceClass | None,
+        inverted: bool = False,
+    ) -> None:
         """Initialize EnOceanOpenClosedSensor."""
         super().__init__(
             dev_id,
             dev_name,
-            sensor_type,
+            device_class,
             state_on=STATE_OPEN,
             state_off=STATE_CLOSED,
             inverted=inverted,
