@@ -18,7 +18,11 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity
+from homeassistant.components.sensor import (
+    ENTITY_ID_FORMAT,
+    PLATFORM_SCHEMA,
+    SensorEntity,
+)
 from homeassistant.const import (
     CONF_DEVICE_CLASS,
     CONF_ID,
@@ -241,6 +245,7 @@ class EnOceanSensor(EnOceanEntity, RestoreEntity, SensorEntity):
         self.entity_description = description
         self._attr_name = f"{description.name} {dev_name}"
         self._attr_unique_id = description.unique_id(dev_id)
+        self.entity_id = ENTITY_ID_FORMAT.format("_".join(str(e) for e in dev_id))
 
     async def async_added_to_hass(self):
         """Call when entity about to be added to hass."""
@@ -299,6 +304,9 @@ class EnOceanMinMaxWithScaleAndDatabyteSensor(EnOceanSensor):
         self.range_to = range_to
         self.data_byte = data_byte
         self.packet_filter: dict[str, Any] = packet_filter
+        self.entity_id = ENTITY_ID_FORMAT.format(
+            "_".join(str(e) for e in dev_id) + "_" + str(data_byte)
+        )
 
     def value_changed(self, packet):
         """Update the internal state of the sensor."""

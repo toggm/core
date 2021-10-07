@@ -8,6 +8,7 @@ from homeassistant.components.binary_sensor import (
     DEVICE_CLASS_MOTION,
     DEVICE_CLASS_WINDOW,
     DEVICE_CLASSES_SCHEMA,
+    ENTITY_ID_FORMAT,
     PLATFORM_SCHEMA,
     BinarySensorEntity,
 )
@@ -117,6 +118,7 @@ class EnOceanBinarySensor(EnOceanEntity, BinarySensorEntity):
         self.which = -1
         self.onoff = -1
         self._attr_unique_id = f"{combine_hex(dev_id)}-{device_class}"
+        self.entity_id = ENTITY_ID_FORMAT.format("_".join(str(e) for e in dev_id))
 
     @property
     def name(self):
