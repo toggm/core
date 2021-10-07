@@ -8,6 +8,8 @@ import logging
 import struct
 from typing import Any, cast
 
+from pymodbus.pdu import ModbusResponse
+
 from homeassistant.const import (
     CONF_ADDRESS,
     CONF_COMMAND_OFF,
@@ -32,6 +34,7 @@ from homeassistant.helpers.event import async_call_later, async_track_time_inter
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
+    ACTIVE_SCAN_INTERVAL,
     CALL_TYPE_COIL,
     CALL_TYPE_DISCRETE,
     CALL_TYPE_REGISTER_HOLDING,
@@ -51,8 +54,8 @@ from .const import (
     CONF_NAN_VALUE,
     CONF_PRECISION,
     CONF_SCALE,
-    CONF_SLAVE_COUNT,
     CONF_SCAN_GROUP,
+    CONF_SLAVE_COUNT,
     CONF_STATE_OFF,
     CONF_STATE_ON,
     CONF_SWAP,
@@ -82,7 +85,6 @@ class BasePlatform(Entity):
         self._hub = hub
         self._slave = entry.get(CONF_SLAVE, None) or entry.get(CONF_DEVICE_ADDRESS, 0)
         self._id = entry[CONF_ID]
-        self._name = entry[CONF_NAME]
         self._address = int(entry[CONF_ADDRESS])
         self._input_type = entry[CONF_INPUT_TYPE]
         self._value: str | None = None
@@ -113,9 +115,11 @@ class BasePlatform(Entity):
         self._nan_value = entry.get(CONF_NAN_VALUE, None)
         self._zero_suppress = get_optional_numeric_config(CONF_ZERO_SUPPRESS)
         self._scan_group = entry[CONF_SCAN_GROUP]
-        self._unique_id = f"modbus_{hub._config_name}_{self._slave}_{self._input_type}_{self._address}"
+        self._unique_id = (
+            f"modbus_{hub.name}_{self._slave}_{self._input_type}_{self._address}"
+        )
 
-    def init_update_listeners(self):
+    def init_update_listeners(self) -> None:
         """Initialize update listeners."""
         if (
             self._slave is not None
@@ -128,11 +132,18 @@ class BasePlatform(Entity):
                 self._slave,
                 self._input_type,
                 self._address,
-                self.update,
+                self._address,
+                self.async_update_from_result,
             )
 
     @abstractmethod
-    async def update(self, result, slaveId, input_type, address):
+    async def async_update_from_result(
+        self,
+        raw_result: ModbusResponse | None,
+        slave_id: int,
+        input_type: str,
+        address: int,
+    ) -> None:
         """Virtual function to be overwritten."""
 
     @abstractmethod
@@ -143,23 +154,17 @@ class BasePlatform(Entity):
     def async_run(self) -> None:
         """Remote start entity."""
         self.async_hold(update=False)
-        self._cancel_call = async_call_later(
-            self.hass, timedelta(milliseconds=100), self.async_update
-        )
-        if self._scan_interval > 0:
+        self.init_update_listeners()
+        if self._scan_interval == 0 or self._scan_interval > ACTIVE_SCAN_INTERVAL:
+            self._cancel_call = async_call_later(
+                self.hass, timedelta(milliseconds=100), self.async_update
+            )
+        if self._scan_interval > 0 and self._scan_group is None:
             self._cancel_timer = async_track_time_interval(
                 self.hass, self.async_update, timedelta(seconds=self._scan_interval)
             )
         self._attr_available = True
         self.async_write_ha_state()
-    
-    async def async_base_added_to_hass(self):
-        """Handle entity which will be added."""
-        self.init_update_listeners()
-        if self._scan_interval > 0 and self._scan_group is None:
-            async_track_time_interval(
-                self.hass, self.async_update, timedelta(seconds=self._scan_interval)
-            )
 
     @callback
     def async_hold(self, update: bool = True) -> None:
@@ -173,15 +178,11 @@ class BasePlatform(Entity):
         if update:
             self._attr_available = False
             self.async_write_ha_state()
+
     @property
     def unique_id(self) -> str | None:
         """Return a unique ID."""
         return self._unique_id
-
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return self._name
 
     async def async_base_added_to_hass(self) -> None:
         """Handle entity which will be added."""
@@ -257,7 +258,7 @@ class BaseStructPlatform(BasePlatform, RestoreEntity):
             return str(int(round(val, 0)))
         return f"{float(val):.{self._precision}f}"
 
-    def update_value(self, new_value):
+    def update_value(self, new_value: Any) -> None:
         """Update value and write state if value changed."""
         self._attr_available = True
         if new_value != self._value:
@@ -268,7 +269,9 @@ class BaseStructPlatform(BasePlatform, RestoreEntity):
         """Convert registers to proper result."""
 
         if self._swap:
-            registers = self._swap_registers(registers[address : address + self._count])
+            registers = self._swap_registers(
+                registers[address : address + self._count], self._slave_count
+            )
         byte_string = b"".join([x.to_bytes(2, byteorder="big") for x in registers])
         if self._data_type == DataType.STRING:
             return byte_string.decode()
@@ -344,7 +347,7 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
         else:
             self._verify_active = False
 
-    def init_update_listeners(self):
+    def init_update_listeners(self) -> None:
         """Initialize update listeners."""
         if (
             self._verify_active is True
@@ -358,7 +361,8 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
                 self._slave,
                 self._verify_type,
                 self._verify_address,
-                self.update,
+                self._verify_address,
+                self.async_update_from_result,
             )
         else:
             super().init_update_listeners()
@@ -374,9 +378,14 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
 
     async def async_turn(self, command: int) -> None:
         """Evaluate switch result."""
+        if self._call_active:
+            return
+        self._call_active = True
         result = await self._hub.async_pb_call(
             self._slave, self._address, command, self._write_type
         )
+        self._call_active = False
+
         if result is None:
             self._attr_available = False
             self.async_write_ha_state()
@@ -414,16 +423,22 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
             self._slave, self._verify_address, 1, self._verify_type
         )
         self._call_active = False
-        await self.update(result, self._slave, self._verify_type, 0)
+        await self.async_update_from_result(result, self._slave, self._verify_type, 0)
 
-    async def update(self, result, slaveId, input_type, address):
+    async def async_update_from_result(
+        self,
+        raw_result: ModbusResponse | None,
+        slave_id: int,
+        input_type: str,
+        address: int,
+    ) -> None:
         """Update the entity state."""
         if not self._verify_active:
             self._attr_available = True
             self.async_write_ha_state()
             return
 
-        if result is None:
+        if raw_result is None:
             if self._lazy_errors:
                 self._lazy_errors -= 1
                 return
@@ -435,23 +450,24 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
         self._lazy_errors = self._lazy_error_count
         self._attr_available = True
         if self._verify_type in (CALL_TYPE_COIL, CALL_TYPE_DISCRETE):
+            if len(raw_result.bits) > address:
+                _LOGGER.debug(
+                    "update switch slave=%s, input_type=%s, address=%s -> result=%s",
+                    slave_id,
+                    input_type,
+                    address,
+                    raw_result.bits[address],
+                )
+                self._attr_is_on = bool(raw_result.bits[address] & 1)
+        elif len(raw_result.registers) > address:
             _LOGGER.debug(
                 "update switch slave=%s, input_type=%s, address=%s -> result=%s",
-                slaveId,
+                slave_id,
                 input_type,
                 address,
-                result.bits[address],
+                raw_result.registers,
             )
-            self._attr_is_on = bool(result.bits[address] & 1)
-        else:
-            _LOGGER.debug(
-                "update switch slave=%s, input_type=%s, address=%s -> result=%s",
-                slaveId,
-                input_type,
-                address,
-                result.registers,
-            )
-            value = int(result.registers[address])
+            value = int(raw_result.registers[address])
             if value == self._state_on:
                 self._attr_is_on = True
             elif value == self._state_off:
@@ -466,4 +482,5 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
                     self._verify_address,
                     value,
                 )
+                self._attr_is_on = bool(raw_result.bits[address] & 1)
         self.async_write_ha_state()

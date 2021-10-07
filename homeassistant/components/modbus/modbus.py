@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import asyncio
 from collections import namedtuple
-from collections.abc import Callable
-from datetime import timedelta
+from collections.abc import Callable, Coroutine
+from datetime import datetime, timedelta
 import logging
-import typing
-from typing import Any, Callable, List
+from typing import Any
 
 from pymodbus.client import (
     ModbusBaseClient,
@@ -20,7 +19,7 @@ from pymodbus.pdu import ModbusResponse
 from pymodbus.transaction import ModbusAsciiFramer, ModbusRtuFramer, ModbusSocketFramer
 import voluptuous as vol
 
-from homeassistant.components.enocean.const import (
+from homeassistant.components.enocean import (
     DATA_ENOCEAN,
     DOMAIN as ENOCEAN_DOMAIN,
     ENOCEAN_DONGLE,
@@ -42,11 +41,10 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 from homeassistant.helpers.reload import async_setup_reload_service
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.event import async_call_later, async_track_time_interval
 
 from .const import (
     ATTR_ADDRESS,
@@ -65,10 +63,10 @@ from .const import (
     CONF_BAUDRATE,
     CONF_BYTESIZE,
     CONF_CLOSE_COMM_ON_ERROR,
-    CONF_MSG_WAIT,
     CONF_ENOCEAN,
     CONF_ESP_VERSION,
     CONF_INPUT_ADDRESS,
+    CONF_MSG_WAIT,
     CONF_OUTPUT_ADDRESS,
     CONF_PARITY,
     CONF_RETRIES,
@@ -281,20 +279,36 @@ class ModbusUpdateListener:
 
     def __init__(
         self,
-        slave: str,
+        slave: int,
         input_type: str,
-        address: int,
-        func: Callable[[Any, str, str, int], None],
-    ):
+        min_address: int,
+        max_address: int,
+        func: Callable[
+            [ModbusResponse | None, int, str, int], Coroutine[Any, Any, None]
+        ],
+    ) -> None:
         """Initialize the Modbus update listener configuration."""
         self._slave = slave
         self._input_type = input_type
-        self._address = address
+        self._min_address = min_address
+        self._max_address = max_address
         self._func = func
 
-    def notify(self, result, offset):
+    def get_min_address(self) -> int:
+        """Get min address."""
+        return self._min_address
+
+    def get_max_address(self) -> int:
+        """Get max address."""
+        return self._max_address
+
+    def notify(
+        self, result: ModbusResponse | None, offset: int
+    ) -> Coroutine[Any, Any, None]:
         """Notify update listener."""
-        return self._func(result, self._slave, self._input_type, self._address - offset)
+        return self._func(
+            result, self._slave, self._input_type, self._min_address - offset
+        )
 
 
 class ModbusHub:
@@ -384,15 +398,13 @@ class ModbusHub:
             else:
                 self._pb_params["framer"] = ModbusSocketFramer
         self._update_listeners_by_scan_group = dict[
-            str, dict[Any, List[ModbusUpdateListener]]
+            str, dict[Any, list[ModbusUpdateListener]]
         ]()
         self._scan_groups = dict[str, int]()
         for entry in client_config[CONF_SCAN_GROUPS]:
             name = entry[CONF_NAME]
             self._scan_groups[name] = int(entry[CONF_SCAN_INTERVAL_MILLIS])
-            self._update_listeners_by_scan_group[name] = dict[
-                Any, List[ModbusUpdateListener]
-            ]()
+            self._update_listeners_by_scan_group[name] = {}
 
         if CONF_MSG_WAIT in client_config:
             self._msg_wait = client_config[CONF_MSG_WAIT] / 1000
@@ -443,11 +455,14 @@ class ModbusHub:
         return True
 
     async def async_create_and_register_enocean_dongle(
-        self, config: typing.Dict[str, Any]
-    ):
+        self, config: dict[str, Any]
+    ) -> None:
         """Create and register enocean dongle."""
+        # pylint: disable=import-outside-toplevel
         from .modbusenoceandongle import ModbusEnOceanDongle
         from .modbusenoceanwago750adapter import ModbusEnOceanWago750Adapter
+
+        # pylint: enable=import-outside-toplevel
 
         input_address = config[CONF_INPUT_ADDRESS]
         output_address = config[CONF_OUTPUT_ADDRESS]
@@ -472,9 +487,9 @@ class ModbusHub:
         self._config_delay = 0
         self.start_update_listener()
 
-    def start_update_listener(self):
+    def start_update_listener(self) -> None:
         """Possibly start monitoring of updates."""
-        for (scan_group, interval_millis) in self._scan_groups.items():
+        for scan_group, interval_millis in self._scan_groups.items():
             _LOGGER.debug(
                 "Register scan listener scan_group=%s, interval_millis=%s",
                 scan_group,
@@ -488,51 +503,54 @@ class ModbusHub:
 
     def register_update_listener(
         self,
-        scan_group,
-        slave,
-        input_type,
-        address,
-        func: Callable[[Any, str, str, int], None],
-    ):
+        scan_group: str,
+        slave: int,
+        input_type: str,
+        min_address: int,
+        max_address: int,
+        func: Callable[
+            [ModbusResponse | None, int, str, int], Coroutine[Any, Any, None]
+        ],
+    ) -> None:
         """Register update listener."""
         _LOGGER.debug(
-            "Register update listener slave=%s, input_type=%s, address=%s in scan_group=%s",
+            "Register update listener slave=%s, input_type=%s, min_address=%s, max_address=%s in scan_group=%s",
             slave,
             input_type,
-            address,
+            min_address,
+            max_address,
             scan_group,
         )
         update_listeners = self._update_listeners_by_scan_group[scan_group]
         key = (slave, input_type)
         if key in update_listeners:
             update_listeners[key].append(
-                ModbusUpdateListener(slave, input_type, address, func)
+                ModbusUpdateListener(slave, input_type, min_address, max_address, func)
             )
         else:
             update_listeners[key] = [
-                ModbusUpdateListener(slave, input_type, address, func)
+                ModbusUpdateListener(slave, input_type, min_address, max_address, func)
             ]
 
-    def async_update_function(self, scan_group):
+    def async_update_function(
+        self, scan_group: str
+    ) -> Callable[[datetime], Coroutine[Any, Any, None] | None]:
         """Return async update function per scan group."""
 
         @callback
-        async def async_update(now=None):
+        async def async_update(now: datetime | None = None) -> None:
             """Update the state of all entities in a given scan group."""
             # remark "now" is a dummy parameter to avoid problems with
             # async_track_time_interval
-            _LOGGER.debug(
-                "async_update: scan_group=%s, items=%s",
-                scan_group,
-                self._update_listeners_by_scan_group[scan_group],
-            )
-
-            for ((slave, input_type), listeners,) in self._update_listeners_by_scan_group[scan_group].items():
+            for (
+                (slave, input_type),
+                listeners,
+            ) in self._update_listeners_by_scan_group[scan_group].items():
                 min_address = 1000
                 max_address = 0
                 for listener in listeners:
-                    min_address = min(min_address, listener._address)
-                    max_address = max(max_address, listener._address)
+                    min_address = min(min_address, listener.get_min_address())
+                    max_address = max(max_address, listener.get_max_address())
                 _LOGGER.debug(
                     "query modbus: scan_group=%s, slave=%s, minAdress=%s, maxAdress=%s, input_type=%s",
                     scan_group,
