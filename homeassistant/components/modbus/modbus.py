@@ -4,10 +4,9 @@ from __future__ import annotations
 import asyncio
 from collections import namedtuple
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
-import typing
-from typing import Any, Callable, List
+from typing import Any, Awaitable, Coroutine
 
 from pymodbus.client.sync import (
     BaseModbusClient,
@@ -43,10 +42,13 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.reload import async_setup_reload_service
+from homeassistant.helpers.event import (
+    Event,
+    async_call_later,
+    async_track_time_interval,
+)
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.event import async_call_later, async_track_time_interval
 
 from .const import (
     ATTR_ADDRESS,
@@ -65,10 +67,10 @@ from .const import (
     CONF_BAUDRATE,
     CONF_BYTESIZE,
     CONF_CLOSE_COMM_ON_ERROR,
-    CONF_MSG_WAIT,
     CONF_ENOCEAN,
     CONF_ESP_VERSION,
     CONF_INPUT_ADDRESS,
+    CONF_MSG_WAIT,
     CONF_OUTPUT_ADDRESS,
     CONF_PARITY,
     CONF_RETRIES,
@@ -269,10 +271,12 @@ class ModbusUpdateListener:
 
     def __init__(
         self,
-        slave: str,
+        slave: int,
         input_type: str,
         address: int,
-        func: Callable[[Any, str, str, int], None],
+        func: Callable[
+            [ModbusResponse | None, int, str, int], Coroutine[Any, Any, None]
+        ],
     ):
         """Initialize the Modbus update listener configuration."""
         self._slave = slave
@@ -280,7 +284,9 @@ class ModbusUpdateListener:
         self._address = address
         self._func = func
 
-    def notify(self, result, offset):
+    def notify(
+        self, result: ModbusResponse | None, offset: int
+    ) -> Coroutine[Any, Any, None]:
         """Notify update listener."""
         return self._func(result, self._slave, self._input_type, self._address - offset)
 
@@ -301,7 +307,7 @@ class ModbusHub:
         self._config_type = client_config[CONF_TYPE]
         self._config_delay = client_config[CONF_DELAY]
         self._scan_interval = int(client_config[CONF_SCAN_INTERVAL])
-        self._pb_call = PYMODBUS_CALL.copy()
+        self._pb_call: dict[str, RunEntry] = {}
         self._pb_class = {
             SERIAL: ModbusSerialClient,
             TCP: ModbusTcpClient,
@@ -331,16 +337,14 @@ class ModbusHub:
             self._pb_params["host"] = client_config[CONF_HOST]
             if self._config_type == RTUOVERTCP:
                 self._pb_params["framer"] = ModbusRtuFramer
-        self._update_listeners_by_scan_group = dict[
-            str, dict[Any, List[ModbusUpdateListener]]
-        ]()
-        self._scan_groups = dict[str, int]()
+        self._update_listeners_by_scan_group: dict[
+            str, dict[Any, list[ModbusUpdateListener]]
+        ] = {}
+        self._scan_groups: dict[str, int] = {}
         for entry in client_config[CONF_SCAN_GROUPS]:
             name = entry[CONF_NAME]
             self._scan_groups[name] = int(entry[CONF_SCAN_INTERVAL_MILLIS])
-            self._update_listeners_by_scan_group[name] = dict[
-                Any, List[ModbusUpdateListener]
-            ]()
+            self._update_listeners_by_scan_group[name] = {}
 
         Defaults.Timeout = client_config[CONF_TIMEOUT]
         if CONF_MSG_WAIT in client_config:
@@ -387,8 +391,8 @@ class ModbusHub:
         return True
 
     async def async_create_and_register_enocean_dongle(
-        self, config: typing.Dict[str, Any]
-    ):
+        self, config: dict[str, Any]
+    ) -> None:
         """Create and register enocean dongle."""
         from .modbusenoceandongle import ModbusEnOceanDongle
         from .modbusenoceanwago750adapter import ModbusEnOceanWago750Adapter
@@ -416,7 +420,7 @@ class ModbusHub:
         self._config_delay = 0
         self.start_update_listener()
 
-    def start_update_listener(self):
+    def start_update_listener(self) -> None:
         """Possibly start monitoring of updates."""
         for (scan_group, interval_millis) in self._scan_groups.items():
             _LOGGER.debug(
@@ -432,12 +436,14 @@ class ModbusHub:
 
     def register_update_listener(
         self,
-        scan_group,
-        slave,
-        input_type,
-        address,
-        func: Callable[[Any, str, str, int], None],
-    ):
+        scan_group: str,
+        slave: int,
+        input_type: str,
+        address: int,
+        func: Callable[
+            [ModbusResponse | None, int, str, int], Coroutine[Any, Any, None]
+        ],
+    ) -> None:
         """Register update listener."""
         _LOGGER.debug(
             "Register update listener slave=%s, input_type=%s, address=%s in scan_group=%s",
@@ -457,11 +463,13 @@ class ModbusHub:
                 ModbusUpdateListener(slave, input_type, address, func)
             ]
 
-    def async_update_function(self, scan_group):
+    def async_update_function(
+        self, scan_group: str
+    ) -> Callable[..., Awaitable[None] | None]:
         """Return async update function per scan group."""
 
         @callback
-        async def async_update(now=None):
+        async def async_update(now: datetime | None = None) -> None:
             """Update the state of all entities in a given scan group."""
             # remark "now" is a dummy parameter to avoid problems with
             # async_track_time_interval

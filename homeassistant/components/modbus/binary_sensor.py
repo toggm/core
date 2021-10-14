@@ -5,6 +5,8 @@ from datetime import datetime
 import logging
 from typing import Any
 
+from pymodbus.pdu import ModbusResponse
+
 from homeassistant.components.binary_sensor import ENTITY_ID_FORMAT, BinarySensorEntity
 from homeassistant.const import (
     CONF_BINARY_SENSORS,
@@ -101,9 +103,11 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
             self._slave, self._address, self._count, self._input_type
         )
         self._call_active = False
-        await self.update(result, self._slave, self._input_type, 0)
+        await self.async_update_from_result(result, self._slave, self._input_type, 0)
 
-    async def update(self, result, slaveId, input_type, address):
+    async def async_update_from_result(
+        self, result: ModbusResponse | None, slaveId: int, input_type: str, address: int
+    ) -> None:
         """Update the state of the sensor."""
         if result is None:
             if self._lazy_errors:
@@ -125,7 +129,7 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
             input_type,
             address,
             result.bits[address],
-        )        
+        )
         self._attr_is_on = result.bits[address] & 1
         self._attr_available = True
         
