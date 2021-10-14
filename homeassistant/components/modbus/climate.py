@@ -13,6 +13,8 @@ from homeassistant.components.climate import (
 )
 import logging
 
+from pymodbus.pdu import ModbusResponse
+
 from homeassistant.const import (
     ATTR_TEMPERATURE,
     CONF_ADDRESS,
@@ -95,7 +97,7 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
                 self._slave,
                 CALL_TYPE_REGISTER_HOLDING,
                 self._target_temperature_register,
-                self.update,
+                self.async_update_from_result,
             )
 
         self._attr_current_temperature = None
@@ -230,20 +232,13 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         if self._call_active:
             return
         self._call_active = True
-        
+
         result = await self._hub.async_pymodbus_call(
             self._slave,
             self._target_temperature_register,
             self._count,
             CALL_TYPE_REGISTER_HOLDING,
         )
-        if result is None:
-            if self._lazy_errors:
-                self._lazy_errors -= 1
-                return -1
-            self._lazy_errors = self._lazy_error_count
-            self._attr_available = False
-            return
 
         new_target_temperature = await self._async_read_register(result, 0)
         if new_target_temperature != self._attr_target_temperature:
@@ -253,14 +248,6 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         result = await self._hub.async_pymodbus_call(
             self._slave, self._address, self._count, self._input_type
         )
-
-        if result is None:
-            if self._lazy_errors:
-                self._lazy_errors -= 1
-                return -1
-            self._lazy_errors = self._lazy_error_count            
-            self._attr_available = False
-            return
 
         new_current_temperature = await self._async_read_register(result, 0)
         if new_current_temperature != self._attr_current_temperature:
@@ -273,15 +260,6 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
             result = await self._hub.async_pymodbus_call(
                 self._slave, self._hvac_mode_register, self._count, CALL_TYPE_REGISTER_HOLDING
             )
-
-            if result is None:
-                if self._lazy_errors:
-                    self._lazy_errors -= 1
-                    return -1
-                self._lazy_errors = self._lazy_error_count            
-                self._attr_available = False
-                return
-
             hvac_mode = await self._async_read_register(
                 result, 0, raw=True
             )
@@ -305,14 +283,6 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
                 self._slave, self._hvac_onoff_register, self._count, CALL_TYPE_REGISTER_HOLDING
             )
 
-            if result is None:
-                if self._lazy_errors:
-                    self._lazy_errors -= 1
-                    return -1
-                self._lazy_errors = self._lazy_error_count            
-                self._attr_available = False
-                return
-
             onoff = await self._async_read_register(
                 result, 0, raw=True
             )
@@ -322,7 +292,9 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
 
         self._call_active = False        
 
-    async def update(self, result, slaveId, input_type, address):
+    async def async_update_from_result(
+        self, result: ModbusResponse | None, slaveId: int, input_type: str, address: int
+    ) -> None:
         """Update Target & Current Temperature."""
         if result is None:
             self._available = False
@@ -340,7 +312,7 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         self._available = True
 
     async def _async_read_register(
-        self, result: list, address: int, raw: bool | None = False
+        self, result: ModbusResponse, address: int, raw: bool | None = False
     ) -> float | None:
         """Read register using the Modbus hub slave."""
         if result is None:
