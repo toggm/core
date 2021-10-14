@@ -6,6 +6,8 @@ import struct
 from typing import Any
 import logging
 
+from pymodbus.pdu import ModbusResponse
+
 from homeassistant.components.climate import ENTITY_ID_FORMAT, ClimateEntity
 from homeassistant.components.climate.const import ClimateEntityFeature, HVACMode
 from homeassistant.const import (
@@ -82,7 +84,7 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
                 self._slave,
                 CALL_TYPE_REGISTER_HOLDING,
                 self._target_temperature_register,
-                self.update,
+                self.async_update_from_result,
             )
 
         self._attr_current_temperature = None
@@ -159,20 +161,13 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         if self._call_active:
             return
         self._call_active = True
-        
+
         result = await self._hub.async_pymodbus_call(
             self._slave,
             self._target_temperature_register,
             self._count,
             CALL_TYPE_REGISTER_HOLDING,
         )
-        if result is None:
-            if self._lazy_errors:
-                self._lazy_errors -= 1
-                return -1
-            self._lazy_errors = self._lazy_error_count
-            self._attr_available = False
-            return
 
         new_target_temperature = await self._async_read_register(result, 0)
         if new_target_temperature != self._attr_target_temperature:
@@ -182,20 +177,15 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         result = await self._hub.async_pymodbus_call(
             self._slave, self._address, self._count, self._input_type
         )
-        if result is None:
-            if self._lazy_errors:
-                self._lazy_errors -= 1
-                return -1
-            self._lazy_errors = self._lazy_error_count            
-            self._attr_available = False
-            return
 
         new_current_temperature = await self._async_read_register(result, 0)
         if new_current_temperature != self._attr_current_temperature:
             self._attr_current_temperature = new_current_temperature
             self.async_write_ha_state()
 
-    async def update(self, result, slaveId, input_type, address):
+    async def async_update_from_result(
+        self, result: ModbusResponse | None, slaveId: int, input_type: str, address: int
+    ) -> None:
         """Update Target & Current Temperature."""
         if result is None:
             self._available = False
@@ -213,7 +203,7 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         self._available = True
 
     async def _async_read_register(
-        self, result: list, address: int
+        self, result: ModbusResponse, address: int
     ) -> float | None:
         """Read register using the Modbus hub slave."""
         if result is None:
