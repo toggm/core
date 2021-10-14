@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import datetime
 import logging
 from typing import Any
-from homeassistant.components.modbus.const import DATA_TYPE_STRING
 
 from homeassistant.components.sensor import CONF_STATE_CLASS, SensorEntity
 from homeassistant.const import CONF_NAME, CONF_SENSORS, CONF_UNIT_OF_MEASUREMENT
@@ -18,6 +17,14 @@ from homeassistant.const import (
     CONF_STRUCTURE,
     CONF_UNIT_OF_MEASUREMENT,
 )
+from pymodbus.pdu import ModbusResponse
+
+from homeassistant.components.sensor import (
+    CONF_STATE_CLASS,
+    ENTITY_ID_FORMAT,
+    SensorEntity,
+)
+from homeassistant.const import CONF_NAME, CONF_SENSORS, CONF_UNIT_OF_MEASUREMENT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -111,9 +118,11 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreEntity, SensorEntity):
         raw_result = await self._hub.async_pymodbus_call(
             self._slave, self._address, self._count, self._input_type
         )
-        await self.update(raw_result, self._slave, self._input_type, 0)
+        await self.async_update_from_result(raw_result, self._slave, self._input_type, 0)
 
-    async def update(self, result, slaveId, input_type, address):
+    async def async_update_from_result(
+        self, result: ModbusResponse | None, slaveId: int, input_type: str, address: int
+    ) -> None:
         """Update the state of the sensor."""
         if result is None:
             if self._lazy_errors:

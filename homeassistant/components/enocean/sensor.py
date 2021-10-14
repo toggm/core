@@ -22,6 +22,7 @@ from homeassistant.components.sensor import (
     ENTITY_ID_FORMAT,
     PLATFORM_SCHEMA,
     SensorEntity,
+    SensorEntityDescription,
 )
 from homeassistant.const import (
     CONF_DEVICE_CLASS,
@@ -199,7 +200,7 @@ def setup_platform(
                 range_from=range_from,
                 range_to=range_to,
                 data_byte=data_byte,
-                packet_filter=packet_filter
+                packet_filter=packet_filter,
             )
         ]
 
@@ -211,17 +212,17 @@ def setup_platform(
         data_byte = config.get(CONF_DATA_BYTE)
         packet_filter = config.get(CONF_PACKET_FILTER)
         entities = [
-                EnOceanIlluminanceSensor(
-                    dev_id,
-                    dev_name,
-                    illuminance_min,
-                    illuminance_max,
-                    range_from=range_from,
-                    range_to=range_to,
-                    data_byte=data_byte,
-                    packet_filter=packet_filter
-                )
-            ]
+            EnOceanIlluminanceSensor(
+                dev_id,
+                dev_name,
+                illuminance_min,
+                illuminance_max,
+                range_from=range_from,
+                range_to=range_to,
+                data_byte=data_byte,
+                packet_filter=packet_filter,
+            )
+        ]
 
     elif sensor_type == SENSOR_TYPE_HUMIDITY:
         entities = [EnOceanHumiditySensor(dev_id, dev_name, SENSOR_DESC_HUMIDITY)]
