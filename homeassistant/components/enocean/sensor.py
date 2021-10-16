@@ -21,6 +21,7 @@ import voluptuous as vol
 from homeassistant.components.sensor import (
     ENTITY_ID_FORMAT,
     PLATFORM_SCHEMA,
+    STATE_CLASS_MEASUREMENT,
     SensorEntity,
     SensorEntityDescription,
 )
@@ -363,7 +364,7 @@ class EnOceanTemperatureSensor(EnOceanMinMaxWithScaleAndDatabyteSensor):
         super().__init__(
             dev_id,
             dev_name,
-            SENSOR_TYPE_TEMPERATURE,
+            SENSOR_DESC_TEMPERATURE,
             scale_min,
             scale_max,
             range_from,
@@ -434,7 +435,7 @@ class EnOceanIlluminanceSensor(EnOceanMinMaxWithScaleAndDatabyteSensor):
         super().__init__(
             dev_id,
             dev_name,
-            SENSOR_TYPE_ILLUMINANCE,
+            SENSOR_DESC_ILLUMINANCE,
             scale_min,
             scale_max,
             range_from,
