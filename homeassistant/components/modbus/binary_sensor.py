@@ -127,7 +127,7 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
             self._attr_is_on = bool(self._result[0] & 1)
 
         self._lazy_errors = self._lazy_error_count
-        _LOGGER.debug(
+        logging.debug(
             "update binary_sensor slave=%s, input_type=%s, address=%s -> result=%s",
             slaveId,
             input_type,
