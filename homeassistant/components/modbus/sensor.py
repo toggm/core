@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 from typing import Any
 
 from pymodbus.pdu import ModbusResponse
@@ -90,7 +91,7 @@ class ModbusRegisterSensor(BaseStructPlatform, RestoreEntity, SensorEntity):
             self.async_write_ha_state()
             return
 
-        _LOGGER.debug(
+        logging.debug(
             "update sensors slave=%s, input_type=%s, address=%s -> result=%s",
             slaveId,
             input_type,

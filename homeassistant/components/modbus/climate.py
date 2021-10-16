@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 import struct
 from typing import Any
 
@@ -184,7 +185,7 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         if result is None:
             self._attr_available = False
             return
-        _LOGGER.debug(
+        logging.debug(
             "update climate slave=%s, input_type=%s, address=%s -> result=%s",
             slaveId,
             input_type,
