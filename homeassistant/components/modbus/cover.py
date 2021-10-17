@@ -152,17 +152,17 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
             self._slave is not None
             and self._input_type
             and self._scan_group is not None
+            and self._address_open is not None
+            and self._address_close is not None
         ):
-            # Register max address of listeners to ensure we query both coils
-            max_address = max(self._address_open, self._address_close)
-            if max_address is not None:
-                self._hub.register_update_listener(
-                    self._scan_group,
-                    self._slave,
-                    self._input_type,
-                    max_address,
-                    self.async_update_from_result,
-                )
+            self._hub.register_update_listener(
+                self._scan_group,
+                self._slave,
+                self._input_type,
+                min(self._address_open, self._address_close),
+                max(self._address_open, self._address_close),
+                self.async_update_from_result,
+            )
 
     async def async_added_to_hass(self) -> None:
         """Handle entity which will be added."""
@@ -206,6 +206,13 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open cover."""
+        _LOGGER.debug(
+            "async_open_cover: slave=%s, input_type=%s, address=%s, active=%",
+            self._slave,
+            self._input_type,
+            self._address,
+            self._call_active,
+        )
         if self._call_active:
             return
         self._call_active = True
@@ -271,6 +278,13 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close cover."""
+        _LOGGER.debug(
+            "async_close_cover: slave=%s, input_type=%s, address=%s, active=%",
+            self._slave,
+            self._input_type,
+            self._address,
+            self._call_active,
+        )
         if self._call_active:
             return
         self._call_active = True
@@ -318,6 +332,12 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop the cover."""
+        _LOGGER.debug(
+            "async_stop_cover: slave=%s, input_type=%s, address=%s",
+            self._slave,
+            self._input_type,
+            self._address,
+        )
         if (
             self._write_type == CALL_TYPE_WRITE_COIL
             and self._write_address_close != self._write_address_open
@@ -370,7 +390,7 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
 
     async def async_mark_as_opened_or_closed(self, opened: bool) -> None:
         """Mark opening or closing of cover as completed."""
-        logging.debug(
+        _LOGGER.debug(
             "mark cover as opened or closed: slave=%s, input_type=%s, address=%s, state=%s",
             self._slave,
             self._input_type,
@@ -443,21 +463,20 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
         if input_type == CALL_TYPE_COIL:
             if self._address_open != self._address_close:
                 # Get min_address of open and close, address will be relative to this address
-                start_address = max(self._address_open, self._address_close)
+                start_address = min(self._address_open, self._address_close)
                 opening = bool(
                     result.bits[address + (self._address_open - start_address)] & 1
                 )
                 closing = bool(
                     result.bits[address + (self._address_close - start_address)] & 1
                 )
-                logging.debug(
-                    "update cover slave=%s, input_type=%s, address=%s, address_open=%s, address_close=%s -> result=%s, opening=%s, closing=%s",
+                _LOGGER.debug(
+                    "update cover slave=%s, input_type=%s, address=%s, address_open=%s, address_close=%s, opening=%s, closing=%s",
                     slaveId,
                     input_type,
                     address,
                     (self._address_open - start_address),
                     (self._address_close - start_address),
-                    result.bits,
                     opening,
                     closing,
                 )
@@ -467,26 +486,24 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
                     self._set_attr_state(self._state_closing)
                 else:
                     # we assume either closed or open based on previous status
-                    if self._value == self._state_opening:
+                    if self._attr_is_opening:
                         self._set_attr_state(self._state_open)
-                    elif self._value == self._state_closing:
+                    elif self._attr_is_closing:
                         self._set_attr_state(self._state_closed)
             else:
-                logging.debug(
-                    "update cover slave=%s, input_type=%s, address=%s -> result=%s",
+                _LOGGER.debug(
+                    "update cover slave=%s, input_type=%s, address=%s",
                     slaveId,
                     input_type,
                     address,
-                    result.bits,
                 )
                 self._set_attr_state(bool(result.bits[address] & 1))
         else:
-            logging.debug(
-                "update cover slave=%s, input_type=%s, address=%s -> result=%s",
+            _LOGGER.debug(
+                "update cover slave=%s, input_type=%s, address=%s",
                 slaveId,
                 input_type,
                 address,
-                result.registers,
             )
             self._set_attr_state(int(result.registers[address]))
         self.async_write_ha_state()

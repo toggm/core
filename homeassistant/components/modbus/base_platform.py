@@ -115,6 +115,7 @@ class BasePlatform(Entity):
                 self._slave,
                 self._input_type,
                 self._address,
+                self._address,
                 self.async_update_from_result,
             )
 
@@ -311,6 +312,7 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
                 self._scan_group,
                 self._slave,
                 self._verify_type,
+                self._verify_address,
                 self._verify_address,
                 self.async_update_from_result,
             )
