@@ -46,6 +46,9 @@ RUN \
             --use-deprecated=legacy-resolver \
             -r homeassistant/requirements_all.txt
 
+# Need to install not-yet merged enocean module manually
+RUN git clone -b dev/esp2_support https://github.com/toggm/enocean.git enocean && cd enocean && pip3 install .
+
 ## Setup Home Assistant Core
 COPY . homeassistant/
 RUN \
