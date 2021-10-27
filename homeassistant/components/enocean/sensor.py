@@ -140,7 +140,6 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
             EnOceanTemperatureSensor(
                 dev_id,
                 dev_name,
-                SENSOR_DESC_TEMPERATURE,
                 scale_min=temp_min,
                 scale_max=temp_max,
                 range_from=range_from,
@@ -271,7 +270,7 @@ class EnOceanMinMaxWithScaleAndDatabyteSensor(EnOceanSensor):
         raw_val = packet.data[self.data_byte]
         value = scalescale / range * (raw_val - self.range_from)
         value += self._scale_min
-        self._state = round(value, 1)
+        self._attr_native_value = round(value, 1)
         self.schedule_update_ha_state()
 
 
@@ -297,8 +296,6 @@ class EnOceanTemperatureSensor(EnOceanMinMaxWithScaleAndDatabyteSensor):
         self,
         dev_id,
         dev_name,
-        description: SensorEntityDescription,
-        *,
         scale_min,
         scale_max,
         range_from,
