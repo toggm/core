@@ -395,15 +395,16 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
         self._lazy_errors = self._lazy_error_count
         self._attr_available = True
         if self._verify_type in (CALL_TYPE_COIL, CALL_TYPE_DISCRETE):
-            _LOGGER.debug(
-                "update switch slave=%s, input_type=%s, address=%s -> result=%s",
-                slaveId,
-                input_type,
-                address,
-                result.bits[address],
-            )
-            self._attr_is_on = bool(result.bits[address] & 1)
-        else:
+            if len(result.bits) > address:
+                _LOGGER.debug(
+                    "update switch slave=%s, input_type=%s, address=%s -> result=%s",
+                    slaveId,
+                    input_type,
+                    address,
+                    result.bits[address],
+                )
+                self._attr_is_on = bool(result.bits[address] & 1)
+        elif len(result.registers) > address:
             _LOGGER.debug(
                 "update switch slave=%s, input_type=%s, address=%s -> result=%s",
                 slaveId,
@@ -423,4 +424,5 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
                     self._verify_address,
                     value,
                 )
+                self._attr_is_on = bool(result.bits[address] & 1)
         self.async_write_ha_state()

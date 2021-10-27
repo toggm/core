@@ -195,7 +195,6 @@ def setup_platform(
             EnOceanTemperatureSensor(
                 dev_id,
                 dev_name,
-                SENSOR_DESC_TEMPERATURE,
                 scale_min=temp_min,
                 scale_max=temp_max,
                 range_from=range_from,
@@ -326,7 +325,7 @@ class EnOceanMinMaxWithScaleAndDatabyteSensor(EnOceanSensor):
         raw_val = packet.data[self.data_byte]
         value = scalescale / range * (raw_val - self.range_from)
         value += self._scale_min
-        self._state = round(value, 1)
+        self._attr_native_value = round(value, 1)
         self.schedule_update_ha_state()
 
 
@@ -352,8 +351,11 @@ class EnOceanTemperatureSensor(EnOceanMinMaxWithScaleAndDatabyteSensor):
         self,
         dev_id,
         dev_name,
+<<<<<<< HEAD
         description: EnOceanSensorEntityDescription,
         *,
+=======
+>>>>>>> c1c9b4884e (fixed setting enocean sensor value)
         scale_min,
         scale_max,
         range_from,
