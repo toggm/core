@@ -116,11 +116,7 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
             self._lazy_errors = self._lazy_error_count
             self._attr_available = False
             self._result = None
-        else:
-            self._lazy_errors = self._lazy_error_count
-            self._attr_is_on = result.bits[0] & 1
-            self._attr_available = True
-            self._result = result
+            return
 
         self._lazy_errors = self._lazy_error_count
         logging.debug(
@@ -132,7 +128,7 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
         )
         self._attr_is_on = result.bits[address] & 1
         self._attr_available = True
-        
+
         self.async_write_ha_state()
         if self._coordinator:
             self._coordinator.async_set_updated_data(self._result)

@@ -3,35 +3,23 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from enocean.utils import combine_hex
 import voluptuous as vol
 
 from homeassistant.components.sensor import (
+    ENTITY_ID_FORMAT,
     PLATFORM_SCHEMA,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
-from typing import Any
-
-import voluptuous as vol
-
-from homeassistant.components.sensor import (
-    ENTITY_ID_FORMAT,
-    PLATFORM_SCHEMA,
-    STATE_CLASS_MEASUREMENT,
-    SensorEntity,
-    SensorEntityDescription,
-)
 from homeassistant.const import (
     CONF_DEVICE_CLASS,
     CONF_ID,
     CONF_NAME,
-    DEVICE_CLASS_HUMIDITY,
-    DEVICE_CLASS_ILLUMINANCE,
-    DEVICE_CLASS_POWER,
     LIGHT_LUX,
     PERCENTAGE,
     POWER_WATT,
@@ -66,38 +54,6 @@ SENSOR_TYPE_POWER = "powersensor"
 SENSOR_TYPE_TEMPERATURE = "temperature"
 SENSOR_TYPE_WINDOWHANDLE = "windowhandle"
 
-SENSOR_DESC_HUMIDITY = SensorEntityDescription(
-    key=SENSOR_TYPE_HUMIDITY,
-    name="Humidity",
-    native_unit_of_measurement=PERCENTAGE,
-    icon="mdi:water-percent",
-    device_class=DEVICE_CLASS_HUMIDITY,
-)
-
-SENSOR_DESC_ILLUMINANCE = SensorEntityDescription(
-    key=SENSOR_TYPE_ILLUMINANCE,
-    name="Illuminance",
-    native_unit_of_measurement=LIGHT_LUX,
-    icon="mdi:brightness-7",
-    device_class=DEVICE_CLASS_ILLUMINANCE,
-)
-
-SENSOR_DESC_MOTION = SensorEntityDescription(
-    key=SENSOR_TYPE_MOTION,
-    name="Motion",
-    native_unit_of_measurement=None,
-    icon="mdi:motion",
-    device_class=DEVICE_CLASS_MOTION,
-)
-
-SENSOR_DESC_POWER = SensorEntityDescription(
-    key=SENSOR_TYPE_POWER,
-    name="Power",
-    native_unit_of_measurement=POWER_WATT,
-    icon="mdi:power-plug",
-    device_class=DEVICE_CLASS_POWER,
-)
-
 
 @dataclass
 class EnOceanSensorEntityDescriptionMixin:
@@ -112,6 +68,33 @@ class EnOceanSensorEntityDescription(
 ):
     """Describes EnOcean sensor entity."""
 
+
+SENSOR_DESC_HUMIDITY = EnOceanSensorEntityDescription(
+    key=SENSOR_TYPE_HUMIDITY,
+    name="Humidity",
+    native_unit_of_measurement=PERCENTAGE,
+    icon="mdi:water-percent",
+    device_class=SensorDeviceClass.HUMIDITY,
+    unique_id=lambda dev_id: f"{combine_hex(dev_id)}-{SENSOR_TYPE_HUMIDITY}",
+)
+
+SENSOR_DESC_ILLUMINANCE = EnOceanSensorEntityDescription(
+    key=SENSOR_TYPE_ILLUMINANCE,
+    name="Illuminance",
+    native_unit_of_measurement=LIGHT_LUX,
+    icon="mdi:brightness-7",
+    device_class=SensorDeviceClass.ILLUMINANCE,
+    unique_id=lambda dev_id: f"{combine_hex(dev_id)}-{SENSOR_TYPE_ILLUMINANCE}",
+)
+
+SENSOR_DESC_POWER = EnOceanSensorEntityDescription(
+    key=SENSOR_TYPE_POWER,
+    name="Power",
+    native_unit_of_measurement=POWER_WATT,
+    icon="mdi:power-plug",
+    device_class=SensorDeviceClass.POWER,
+    unique_id=lambda dev_id: f"{combine_hex(dev_id)}-{SENSOR_TYPE_POWER}",
+)
 
 SENSOR_DESC_TEMPERATURE = EnOceanSensorEntityDescription(
     key=SENSOR_TYPE_TEMPERATURE,
@@ -321,9 +304,9 @@ class EnOceanMinMaxWithScaleAndDatabyteSensor(EnOceanSensor):
                     return
 
         scalescale = self._scale_max - self._scale_min
-        range = self.range_to - self.range_from
+        diff = self.range_to - self.range_from
         raw_val = packet.data[self.data_byte]
-        value = scalescale / range * (raw_val - self.range_from)
+        value = scalescale / diff * (raw_val - self.range_from)
         value += self._scale_min
         self._attr_native_value = round(value, 1)
         self.schedule_update_ha_state()
@@ -351,11 +334,6 @@ class EnOceanTemperatureSensor(EnOceanMinMaxWithScaleAndDatabyteSensor):
         self,
         dev_id,
         dev_name,
-<<<<<<< HEAD
-        description: EnOceanSensorEntityDescription,
-        *,
-=======
->>>>>>> c1c9b4884e (fixed setting enocean sensor value)
         scale_min,
         scale_max,
         range_from,

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import asyncio
 from collections import namedtuple
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from datetime import datetime, timedelta
 import logging
-from typing import Any, Awaitable, Coroutine
+from typing import Any
 
 from pymodbus.client.sync import (
     BaseModbusClient,
@@ -42,12 +42,8 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.reload import async_setup_reload_service
-from homeassistant.helpers.event import (
-    Event,
-    async_call_later,
-    async_track_time_interval,
-)
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -92,6 +88,8 @@ from .const import (
     TCP,
     UDP,
 )
+from .modbusenoceandongle import ModbusEnOceanDongle
+from .modbusenoceanwago750adapter import ModbusEnOceanWago750Adapter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -278,13 +276,21 @@ class ModbusUpdateListener:
         func: Callable[
             [ModbusResponse | None, int, str, int], Coroutine[Any, Any, None]
         ],
-    ):
+    ) -> None:
         """Initialize the Modbus update listener configuration."""
         self._slave = slave
         self._input_type = input_type
         self._min_address = min_address
         self._max_address = max_address
         self._func = func
+
+    def get_min_address(self) -> int:
+        """Get min address."""
+        return self._min_address
+
+    def get_max_address(self) -> int:
+        """Get max address."""
+        return self._max_address
 
     def notify(
         self, result: ModbusResponse | None, offset: int
@@ -398,8 +404,6 @@ class ModbusHub:
         self, config: dict[str, Any]
     ) -> None:
         """Create and register enocean dongle."""
-        from .modbusenoceandongle import ModbusEnOceanDongle
-        from .modbusenoceanwago750adapter import ModbusEnOceanWago750Adapter
 
         input_address = config[CONF_INPUT_ADDRESS]
         output_address = config[CONF_OUTPUT_ADDRESS]
@@ -486,8 +490,8 @@ class ModbusHub:
                 min_address = 100000
                 max_address = 0
                 for listener in listeners:
-                    min_address = min(min_address, listener._min_address)
-                    max_address = max(max_address, listener._max_address)
+                    min_address = min(min_address, listener.get_min_address())
+                    max_address = max(max_address, listener.get_max_address())
                 _LOGGER.debug(
                     "query modbus: scan_group=%s, slave=%s, minAdress=%s, maxAdress=%s, input_type=%s",
                     scan_group,
