@@ -119,24 +119,20 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
             self._result = []
         else:
             self._lazy_errors = self._lazy_error_count
+            logging.debug(
+                "update binary_sensor slave=%s, input_type=%s, address=%s -> result=%s",
+                slaveId,
+                input_type,
+                address,
+                result.bits[address],
+            )
             self._attr_available = True
             if self._input_type in (CALL_TYPE_COIL, CALL_TYPE_DISCRETE):
-                self._result = result.bits
+                self._result = result.bits[address]
             else:
-                self._result = result.registers
-            self._attr_is_on = bool(self._result[0] & 1)
+                self._result = result.registers[address]
+            self._attr_is_on = bool(self._result & 1)
 
-        self._lazy_errors = self._lazy_error_count
-        logging.debug(
-            "update binary_sensor slave=%s, input_type=%s, address=%s -> result=%s",
-            slaveId,
-            input_type,
-            address,
-            result.bits[address],
-        )
-        self._attr_is_on = result.bits[address] & 1
-        self._attr_available = True
-        
         self.async_write_ha_state()
         if self._coordinator:
             self._coordinator.async_set_updated_data(self._result)

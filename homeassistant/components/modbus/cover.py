@@ -1,21 +1,18 @@
 """Support for Modbus covers."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
 import logging
-from typing import Any, Callable
-import logging
+from typing import Any
 
 from pymodbus.pdu import ModbusResponse
 
 from homeassistant.components.cover import (
     ATTR_CURRENT_POSITION,
     ENTITY_ID_FORMAT,
-    SUPPORT_CLOSE,
-    SUPPORT_OPEN,
-    SUPPORT_STOP,
     CoverEntity,
-    CoverEntityFeature
+    CoverEntityFeature,
 )
 from homeassistant.const import (
     CONF_ADDRESS,
@@ -55,6 +52,7 @@ from .modbus import ModbusHub
 PARALLEL_UPDATES = 1
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_platform(
     hass: HomeAssistant,
@@ -190,12 +188,12 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
     @property
     def supported_features(self) -> int:
         """Flag supported features."""
-        flags = SUPPORT_OPEN | SUPPORT_CLOSE
+        flags = CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE
         if (
             self._input_type == CALL_TYPE_COIL
             and self._write_address_open != self._write_address_close
         ):
-            flags = flags | SUPPORT_STOP
+            flags = flags | CoverEntityFeature.STOP
         return flags
 
     def _set_attr_state(self, value: str | bool | int) -> None:
@@ -207,7 +205,7 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open cover."""
         _LOGGER.debug(
-            "async_open_cover: slave=%s, input_type=%s, address=%s, active=%",
+            "async_open_cover: slave=%s, input_type=%s, address=%s, active=%s",
             self._slave,
             self._input_type,
             self._address,
@@ -279,7 +277,7 @@ class ModbusCover(BasePlatform, CoverEntity, RestoreEntity):
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close cover."""
         _LOGGER.debug(
-            "async_close_cover: slave=%s, input_type=%s, address=%s, active=%",
+            "async_close_cover: slave=%s, input_type=%s, address=%s, active=%s",
             self._slave,
             self._input_type,
             self._address,
