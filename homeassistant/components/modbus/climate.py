@@ -59,6 +59,7 @@ PARALLEL_UPDATES = 1
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,

@@ -38,6 +38,7 @@ class ModbusLight(BaseSwitch, LightEntity):
 
     _attr_color_mode = ColorMode.ONOFF
     _attr_supported_color_modes = {ColorMode.ONOFF}
+
     def __init__(
         self,
         hub: ModbusHub,
