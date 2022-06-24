@@ -88,8 +88,6 @@ from .const import (
     TCP,
     UDP,
 )
-from .modbusenoceandongle import ModbusEnOceanDongle
-from .modbusenoceanwago750adapter import ModbusEnOceanWago750Adapter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -404,6 +402,11 @@ class ModbusHub:
         self, config: dict[str, Any]
     ) -> None:
         """Create and register enocean dongle."""
+        # pylint: disable=import-outside-toplevel
+        from .modbusenoceandongle import ModbusEnOceanDongle
+        from .modbusenoceanwago750adapter import ModbusEnOceanWago750Adapter
+
+        # pylint: enable=import-outside-toplevel
 
         input_address = config[CONF_INPUT_ADDRESS]
         output_address = config[CONF_OUTPUT_ADDRESS]

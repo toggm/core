@@ -109,13 +109,13 @@ class ModbusBinarySensor(BasePlatform, RestoreEntity, BinarySensorEntity):
         self, result: ModbusResponse | None, slaveId: int, input_type: str, address: int
     ) -> None:
         """Update the state of the sensor."""
+        self._result = result
         if result is None:
             if self._lazy_errors:
                 self._lazy_errors -= 1
                 return
             self._lazy_errors = self._lazy_error_count
             self._attr_available = False
-            self._result = None
             return
 
         self._lazy_errors = self._lazy_error_count
