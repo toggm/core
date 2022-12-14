@@ -6,7 +6,11 @@ from typing import Any
 from enocean.utils import combine_hex
 import voluptuous as vol
 
-from homeassistant.components.switch import ENTITY_ID_FORMAT, PLATFORM_SCHEMA, SwitchEntity
+from homeassistant.components.switch import (
+    ENTITY_ID_FORMAT,
+    PLATFORM_SCHEMA,
+    SwitchEntity,
+)
 from homeassistant.const import CONF_ID, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
