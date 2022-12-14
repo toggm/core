@@ -26,3 +26,17 @@ of a component, check the `Home Assistant help section <https://home-assistant.i
    :target: https://home-assistant.io/demo/
 .. |screenshot-integrations| image:: https://raw.githubusercontent.com/home-assistant/core/dev/docs/screenshot-integrations.png
    :target: https://home-assistant.io/integrations/
+
+
+Build docker image
+------------------
+
+AMD64:
+```
+docker buildx build --platform linux/amd64 -t <REMOTE_TAG> --build-arg BUILD_FROM=homeassistant/amd64-homeassistant-base:<BASE_VERSION> --build-arg BUILD_ARCH=amd64 . --push
+```
+
+ARM:
+```
+ docker buildx build --platform linux/arm64 -t <REMOTE_TAG> --build-arg BUILD_FROM=homeassistant/aarch64-homeassistant-base:<BASE_VERSION> --build-arg BUILD_ARCH=aarch64 --build-arg=SSOCR_VERSION=2.22.1 . --push                       
+```
