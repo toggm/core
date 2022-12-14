@@ -6,16 +6,14 @@ import logging
 import struct
 from typing import Any, cast
 
+from pymodbus.pdu import ModbusResponse
+
 from homeassistant.components.climate import (
     ENTITY_ID_FORMAT,
     ClimateEntity,
     ClimateEntityFeature,
     HVACMode,
 )
-import logging
-
-from pymodbus.pdu import ModbusResponse
-
 from homeassistant.const import (
     ATTR_TEMPERATURE,
     CONF_ADDRESS,
@@ -266,11 +264,12 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         if self._hvac_mode_register is not None:
 
             result = await self._hub.async_pymodbus_call(
-                self._slave, self._hvac_mode_register, self._count, CALL_TYPE_REGISTER_HOLDING
+                self._slave,
+                self._hvac_mode_register,
+                self._count,
+                CALL_TYPE_REGISTER_HOLDING,
             )
-            hvac_mode = await self._async_read_register(
-                result, 0, raw=True
-            )
+            hvac_mode = await self._async_read_register(result, 0, raw=True)
 
             # Translate the value received
             if hvac_mode is not None:
@@ -279,7 +278,7 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
                     if hvac_mode == value:
                         self._attr_hvac_mode = mode
                         break
-            
+
             self.async_write_ha_state()
 
         # Read th on/off register if defined. If the value in this
@@ -288,17 +287,18 @@ class ModbusThermostat(BaseStructPlatform, RestoreEntity, ClimateEntity):
         if self._hvac_onoff_register is not None:
 
             result = await self._hub.async_pymodbus_call(
-                self._slave, self._hvac_onoff_register, self._count, CALL_TYPE_REGISTER_HOLDING
+                self._slave,
+                self._hvac_onoff_register,
+                self._count,
+                CALL_TYPE_REGISTER_HOLDING,
             )
 
-            onoff = await self._async_read_register(
-                result, 0, raw=True
-            )
+            onoff = await self._async_read_register(result, 0, raw=True)
             if onoff == 0:
                 self._attr_hvac_mode = HVACMode.OFF
                 self.async_write_ha_state()
 
-        self._call_active = False        
+        self._call_active = False
 
     async def async_update_from_result(
         self, result: ModbusResponse | None, slaveId: int, input_type: str, address: int

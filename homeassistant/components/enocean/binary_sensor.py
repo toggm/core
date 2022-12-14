@@ -12,7 +12,6 @@ from homeassistant.components.binary_sensor import (
     PLATFORM_SCHEMA,
     BinarySensorEntity,
 )
-from homeassistant.core import HomeAssistant
 from homeassistant.const import (
     CONF_DEVICE_CLASS,
     CONF_ID,
@@ -23,6 +22,7 @@ from homeassistant.const import (
     STATE_ON,
     STATE_OPEN,
 )
+from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -84,18 +84,17 @@ def setup_platform(
     dev_name = config.get(CONF_NAME)
 
     sensor_type = config.get(CONF_DEVICE_CLASS)
+    inverted = bool(config.get(CONF_INVERTED))
 
-    if (
-        sensor_type == SENSOR_TYPE_BATTERY
-        or sensor_type == SENSOR_TYPE_BUTTON_PRESSED
-        or sensor_type == SENSOR_TYPE_MOTION
+    if sensor_type in (
+        SENSOR_TYPE_BATTERY,
+        SENSOR_TYPE_BUTTON_PRESSED,
+        SENSOR_TYPE_MOTION,
     ):
-        inverted = config.get(CONF_INVERTED)
         add_entities(
             [EnOceanOnOffSensor(dev_id, dev_name, sensor_type, inverted=inverted)]
         )
     elif sensor_type == SENSOR_TYPE_WINDOW:
-        inverted = config.get(CONF_INVERTED)
         add_entities(
             [EnOceanOpenClosedSensor(dev_id, dev_name, sensor_type, inverted=inverted)]
         )
@@ -242,12 +241,13 @@ class EnOceanOnOffSensor(EnOceanBinarySensor):
         self._state_on = state_on
         self._state_off = state_off
         self._inverted = inverted
+        self._state = state_off
 
     def value_changed(self, packet):
         """Update the internal state of the sensor."""
-        stateOn = (packet.data[0] & 0x01) == 0x01
+        state_on = (packet.data[0] & 0x01) == 0x01
 
-        if stateOn and not self._inverted:
+        if state_on and not self._inverted:
             self._state = self._state_on
         else:
             self._state = self._state_off
