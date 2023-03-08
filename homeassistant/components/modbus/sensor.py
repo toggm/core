@@ -5,26 +5,21 @@ from datetime import datetime
 import logging
 from typing import Any
 
+from pymodbus.pdu import ModbusResponse
+
 from homeassistant.components.sensor import (
-    ENTITY_ID_FORMAT,
     CONF_STATE_CLASS,
+    ENTITY_ID_FORMAT,
     RestoreSensor,
     SensorEntity,
 )
-from homeassistant.const import (
-    CONF_NAME,
-    CONF_SENSORS,
-    CONF_UNIQUE_ID,
-    CONF_UNIT_OF_MEASUREMENT,
-)
-from pymodbus.pdu import ModbusResponse
-
 from homeassistant.const import (
     CONF_COUNT,
     CONF_NAME,
     CONF_OFFSET,
     CONF_SENSORS,
     CONF_STRUCTURE,
+    CONF_UNIQUE_ID,
     CONF_UNIT_OF_MEASUREMENT,
 )
 from homeassistant.core import HomeAssistant, callback
