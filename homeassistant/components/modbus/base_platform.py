@@ -112,7 +112,9 @@ class BasePlatform(Entity):
         self._max_value = get_optional_numeric_config(CONF_MAX_VALUE)
         self._zero_suppress = get_optional_numeric_config(CONF_ZERO_SUPPRESS)
         self._scan_group = entry[CONF_SCAN_GROUP]
-        self._unique_id = f"modbus_{hub._config_name}_{self._slave}_{self._input_type}_{self._address}"
+        self._unique_id = (
+            f"modbus_{hub.name}_{self._slave}_{self._input_type}_{self._address}"
+        )
 
     def init_update_listeners(self) -> None:
         """Initialize update listeners."""
@@ -133,7 +135,11 @@ class BasePlatform(Entity):
 
     @abstractmethod
     async def async_update_from_result(
-        self, result: ModbusResponse | None, slaveId: int, input_type: str, address: int
+        self,
+        result: ModbusResponse | None,
+        slave_id: int,
+        input_type: str,
+        address: int,
     ) -> None:
         """Virtual function to be overwritten."""
 
@@ -398,7 +404,11 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
         await self.async_update_from_result(result, self._slave, self._verify_type, 0)
 
     async def async_update_from_result(
-        self, result: ModbusResponse | None, slaveId: int, input_type: str, address: int
+        self,
+        result: ModbusResponse | None,
+        slave_id: int,
+        input_type: str,
+        address: int,
     ) -> None:
         """Update the entity state."""
         if not self._verify_active:
@@ -421,7 +431,7 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
             if len(result.bits) > address:
                 _LOGGER.debug(
                     "update switch slave=%s, input_type=%s, address=%s -> result=%s",
-                    slaveId,
+                    slave_id,
                     input_type,
                     address,
                     result.bits[address],
@@ -430,7 +440,7 @@ class BaseSwitch(BasePlatform, ToggleEntity, RestoreEntity):
         elif len(result.registers) > address:
             _LOGGER.debug(
                 "update switch slave=%s, input_type=%s, address=%s -> result=%s",
-                slaveId,
+                slave_id,
                 input_type,
                 address,
                 result.registers,
